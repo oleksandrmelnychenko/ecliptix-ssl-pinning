@@ -1,0 +1,79 @@
+# Build directories
+build/
+cmake-build-*/
+bin/
+lib/
+
+# Generated files
+embedded/embedded_keys.hpp
+keys/generated/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Package managers
+conan.lock
+conanbuildinfo.cmake
+conanbuildinfo.txt
+conandata.yml
+conanfile.txt
+
+# Local configuration that shouldn't be committed
+*.local.*
+.env
+.env.local
