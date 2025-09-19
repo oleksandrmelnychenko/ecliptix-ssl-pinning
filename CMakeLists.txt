@@ -232,12 +232,12 @@ if(WIN32)
     )
 elseif(APPLE)
     set_target_properties(ecliptix_security PROPERTIES
-        OUTPUT_NAME "ecliptix_security"
+        OUTPUT_NAME "libecliptix_security"
         SUFFIX ".dylib"
     )
 else()
     set_target_properties(ecliptix_security PROPERTIES
-        OUTPUT_NAME "ecliptix_security"
+        OUTPUT_NAME "libecliptix_security"
         SUFFIX ".so"
     )
 endif()
