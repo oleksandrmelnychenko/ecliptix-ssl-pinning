@@ -7,6 +7,7 @@
 #include "ecliptix/types.h"
 #include "internal/openssl_wrapper.hpp"
 #include "embedded_keys.hpp"
+#include "embedded_pins.hpp"
 
 #include <memory>
 #include <string>
@@ -57,9 +58,8 @@ void set_error(ecliptix_result_t code, const std::string& message,
     if (g_error_callback) {
         ecliptix_error_info_t error_info = {
             .code = code,
-            .message = message.c_str(),
             .function = function,
-            .line = line,
+            .line = static_cast<uint32_t>(line),
             .timestamp = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch()
@@ -67,6 +67,9 @@ void set_error(ecliptix_result_t code, const std::string& message,
             ),
             .thread_id = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()))
         };
+
+        strncpy(error_info.message, message.c_str(), sizeof(error_info.message) - 1);
+        error_info.message[sizeof(error_info.message) - 1] = '\0';
 
         g_error_callback(&error_info, g_callback_user_data);
     }
@@ -76,6 +79,7 @@ ecliptix_result_t handle_exception(const std::exception& e, const char* operatio
     std::string message = std::string(operation) + ": " + e.what();
 
     if (auto* ssl_ex = dynamic_cast<const ecliptix::openssl::OpenSSLException*>(&e)) {
+        (void)ssl_ex; // Suppress unused variable warning
         set_error(ECLIPTIX_ERR_CRYPTO_FAILURE, message);
         return ECLIPTIX_ERR_CRYPTO_FAILURE;
     }
@@ -183,7 +187,10 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_get_version(ecliptix_versi
     version_info->minor = ECLIPTIX_VERSION_MINOR;
     version_info->patch = ECLIPTIX_VERSION_PATCH;
     version_info->build = 1;
-    version_info->build_date = __DATE__ " " __TIME__;
+    strncpy(version_info->build_date, __DATE__ " " __TIME__, sizeof(version_info->build_date) - 1);
+    version_info->build_date[sizeof(version_info->build_date) - 1] = '\0';
+    strncpy(version_info->version_string, ECLIPTIX_VERSION_STRING, sizeof(version_info->version_string) - 1);
+    version_info->version_string[sizeof(version_info->version_string) - 1] = '\0';
     version_info->commit_hash = "dev";
     version_info->build_timestamp = ecliptix::embedded::BUILD_TIMESTAMP;
 
@@ -285,7 +292,7 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_validate_certificate(
     }
 }
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin(
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin_ex(
     const uint8_t* cert_der,
     size_t cert_size,
     ecliptix_pin_mode_t pin_mode) {
@@ -341,21 +348,31 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin(
     }
 }
 
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin(
+    const uint8_t* cert_der,
+    size_t cert_size,
+    const uint8_t* /* trusted_pins */,
+    size_t /* num_pins */) {
+
+    // Simple wrapper that calls the extended function with strict mode
+    return ecliptix_check_certificate_pin_ex(cert_der, cert_size, ECLIPTIX_PIN_MODE_STRICT);
+}
+
 // ============================================================================
 // Symmetric Encryption
 // ============================================================================
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_aes_gcm(
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_aead(
     const uint8_t* plaintext,
     size_t plaintext_size,
     const uint8_t* key,
     size_t key_size,
+    const uint8_t* associated_data,
+    size_t associated_data_size,
     uint8_t* ciphertext,
     size_t* ciphertext_size,
-    uint8_t nonce[ECLIPTIX_AES_GCM_IV_SIZE],
-    uint8_t tag[ECLIPTIX_AES_GCM_TAG_SIZE],
-    const uint8_t* associated_data,
-    size_t associated_data_size) {
+    uint8_t* nonce,
+    uint8_t* tag) {
 
     if (!g_initialized.load()) {
         set_error(ECLIPTIX_ERR_NOT_INITIALIZED, "Library not initialized");
@@ -463,7 +480,8 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_aes_gcm(
 ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_sign_ed25519(
     const uint8_t* message,
     size_t message_size,
-    uint8_t signature[ECLIPTIX_ED25519_SIGNATURE_SIZE]) {
+    const uint8_t* /* private_key */,
+    uint8_t* signature) {
 
     if (!g_initialized.load()) {
         set_error(ECLIPTIX_ERR_NOT_INITIALIZED, "Library not initialized");
@@ -603,15 +621,11 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_get_metrics(ecliptix_metri
     metrics->operations_total = g_operations_total.load();
     metrics->operations_successful = g_operations_successful.load();
     metrics->operations_failed = g_operations_failed.load();
-    metrics->bytes_encrypted = g_bytes_encrypted.load();
-    metrics->bytes_decrypted = g_bytes_decrypted.load();
-    metrics->certificates_validated = g_certificates_validated.load();
-    metrics->signatures_verified = g_signatures_verified.load();
-
-    // TODO: Calculate timing metrics
-    metrics->average_encryption_time_ms = 0.0;
-    metrics->average_decryption_time_ms = 0.0;
-    metrics->average_validation_time_ms = 0.0;
+    metrics->certificates_validated = 0; // TODO: implement counter
+    metrics->pins_checked = 0; // TODO: implement counter
+    metrics->encryptions_performed = 0; // TODO: implement counter
+    metrics->signatures_created = 0; // TODO: implement counter
+    metrics->signatures_verified = 0; // TODO: implement counter
 
     return ECLIPTIX_SUCCESS;
 }

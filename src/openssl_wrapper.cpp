@@ -12,36 +12,48 @@
 #include <openssl/err.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
+#include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/kdf.h>
 #include <openssl/params.h>
+#include <openssl/bn.h>
+#include <openssl/asn1.h>
 
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 #include <cstring>
+#include <ctime>
+
+// Platform-specific time function
+#ifdef _WIN32
+    #include <time.h>
+    #define timegm _mkgmtime
+#else
+    #define _GNU_SOURCE
+    #include <time.h>
+#endif
 
 namespace ecliptix::openssl {
 
-// Smart pointer type aliases for implementation
-using EVP_PKEY_CTX_ptr = std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
-using BIO_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
-
-// Forward declarations
-std::string get_error_string(unsigned long error_code);
+// Forward declarations (implementation only)
+namespace {
+    using EVP_PKEY_CTX_ptr = std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
+}
 
 // ============================================================================
 // OpenSSL Error Handling
 // ============================================================================
 
-OpenSSLException::OpenSSLException(const std::string& message)
-    : std::runtime_error(message) {
-    error_code_ = ERR_get_error();
-}
+std::string get_error_string(unsigned long error_code) {
+    if (error_code == 0) {
+        return "No error";
+    }
 
-OpenSSLException::OpenSSLException(const std::string& operation, unsigned long error_code)
-    : std::runtime_error(operation + ": " + get_error_string(error_code))
-    , error_code_(error_code) {}
+    char buffer[256];
+    ERR_error_string_n(error_code, buffer, sizeof(buffer));
+    return std::string(buffer);
+}
 
 std::string get_last_error() {
     unsigned long error = ERR_get_error();
@@ -54,28 +66,17 @@ std::string get_last_error() {
     return std::string(buffer);
 }
 
-std::string get_error_string(unsigned long error_code) {
-    if (error_code == 0) {
-        return "No error";
-    }
-
-    char buffer[256];
-    ERR_error_string_n(error_code, buffer, sizeof(buffer));
-    return std::string(buffer);
+OpenSSLException::OpenSSLException(const std::string& message)
+    : std::runtime_error(message) {
+    error_code_ = ERR_get_error();
 }
+
+OpenSSLException::OpenSSLException(const std::string& operation, unsigned long error_code)
+    : std::runtime_error(operation + ": " + get_error_string(error_code))
+    , error_code_(error_code) {}
 
 void clear_errors() {
     ERR_clear_error();
-}
-
-std::string get_error_string(unsigned long error_code) {
-    if (error_code == 0) {
-        return "No error";
-    }
-
-    char buffer[256];
-    ERR_error_string_n(error_code, buffer, sizeof(buffer));
-    return std::string(buffer);
 }
 
 // ============================================================================
@@ -142,7 +143,7 @@ int Random::status() {
 // ============================================================================
 
 std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ed25519() {
-    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, nullptr));
+    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, nullptr), EVP_PKEY_CTX_free);
     if (!ctx) {
         throw OpenSSLException("Failed to create Ed25519 key context");
     }
@@ -181,7 +182,7 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ed25519() {
 }
 
 std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ecdsa_p384() {
-    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
+    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr), EVP_PKEY_CTX_free);
     if (!ctx) {
         throw OpenSSLException("Failed to create ECDSA key context");
     }
@@ -209,7 +210,7 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ecdsa_p384() {
 }
 
 std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_rsa(int bits) {
-    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr));
+    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr), EVP_PKEY_CTX_free);
     if (!ctx) {
         throw OpenSSLException("Failed to create RSA key context");
     }
@@ -237,7 +238,7 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_rsa(int bits) {
 }
 
 std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ecdh_x25519() {
-    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr));
+    EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr), EVP_PKEY_CTX_free);
     if (!ctx) {
         throw OpenSSLException("Failed to create X25519 key context");
     }
@@ -413,7 +414,7 @@ AES_GCM::EncryptResult AES_GCM::encrypt_with_iv(
     }
 
     ciphertext_len += len;
-    result.ciphertext.resize(ciphertext_len);
+    result.ciphertext.resize(static_cast<size_t>(ciphertext_len));
 
     // Get authentication tag
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, TAG_SIZE, result.tag.data()) != 1) {
@@ -481,7 +482,7 @@ std::vector<uint8_t> AES_GCM::decrypt(
     }
 
     plaintext_len += len;
-    plaintext.resize(plaintext_len);
+    plaintext.resize(static_cast<size_t>(plaintext_len));
 
     return plaintext;
 }
@@ -599,7 +600,7 @@ void Hash::Context::update(std::span<const uint8_t> data) {
 
 std::vector<uint8_t> Hash::Context::finalize() {
     unsigned int digest_len = 0;
-    std::vector<uint8_t> digest(EVP_MD_size(EVP_MD_CTX_md(ctx_.get())));
+    std::vector<uint8_t> digest(static_cast<size_t>(EVP_MD_size(EVP_MD_CTX_md(ctx_.get()))));
 
     if (EVP_DigestFinal_ex(ctx_.get(), digest.data(), &digest_len) != 1) {
         throw OpenSSLException("Failed to finalize hash");
@@ -607,6 +608,225 @@ std::vector<uint8_t> Hash::Context::finalize() {
 
     digest.resize(digest_len);
     return digest;
+}
+
+// ============================================================================
+// Certificate Implementation
+// ============================================================================
+
+Certificate::Certificate(X509_ptr cert) : cert_(std::move(cert)) {}
+
+Certificate::Certificate(std::span<const uint8_t> der_data) {
+    const uint8_t* data = der_data.data();
+    cert_.reset(d2i_X509(nullptr, &data, static_cast<long>(der_data.size())));
+    if (!cert_) {
+        throw OpenSSLException("Failed to parse DER certificate data");
+    }
+}
+
+Certificate Certificate::from_pem(const std::string& pem_data) {
+    BIO_ptr bio(BIO_new_mem_buf(pem_data.data(), static_cast<int>(pem_data.size())));
+    if (!bio) {
+        throw OpenSSLException("Failed to create BIO for PEM data");
+    }
+
+    X509* cert_raw = PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr);
+    if (!cert_raw) {
+        throw OpenSSLException("Failed to parse PEM certificate");
+    }
+
+    return Certificate(X509_ptr(cert_raw));
+}
+
+std::vector<uint8_t> Certificate::to_der() const {
+    uint8_t* der_data = nullptr;
+    int der_len = i2d_X509(cert_.get(), &der_data);
+    if (der_len < 0 || !der_data) {
+        throw OpenSSLException("Failed to encode certificate to DER");
+    }
+
+    std::vector<uint8_t> result(der_data, der_data + der_len);
+    OPENSSL_free(der_data);
+    return result;
+}
+
+std::string Certificate::to_pem() const {
+    BIO_ptr bio(BIO_new(BIO_s_mem()));
+    if (!bio) {
+        throw OpenSSLException("Failed to create BIO for PEM output");
+    }
+
+    if (PEM_write_bio_X509(bio.get(), cert_.get()) != 1) {
+        throw OpenSSLException("Failed to write certificate to PEM");
+    }
+
+    char* pem_data;
+    long pem_len = BIO_get_mem_data(bio.get(), &pem_data);
+    return std::string(pem_data, static_cast<size_t>(pem_len));
+}
+
+std::string Certificate::get_subject() const {
+    X509_NAME* name = X509_get_subject_name(cert_.get());
+    if (!name) {
+        throw OpenSSLException("Failed to get certificate subject");
+    }
+
+    char* str = X509_NAME_oneline(name, nullptr, 0);
+    if (!str) {
+        throw OpenSSLException("Failed to convert subject name to string");
+    }
+
+    std::string result(str);
+    OPENSSL_free(str);
+    return result;
+}
+
+std::string Certificate::get_issuer() const {
+    X509_NAME* name = X509_get_issuer_name(cert_.get());
+    if (!name) {
+        throw OpenSSLException("Failed to get certificate issuer");
+    }
+
+    char* str = X509_NAME_oneline(name, nullptr, 0);
+    if (!str) {
+        throw OpenSSLException("Failed to convert issuer name to string");
+    }
+
+    std::string result(str);
+    OPENSSL_free(str);
+    return result;
+}
+
+std::string Certificate::get_serial_number() const {
+    const ASN1_INTEGER* serial = X509_get_serialNumber(cert_.get());
+    if (!serial) {
+        throw OpenSSLException("Failed to get certificate serial number");
+    }
+
+    BIGNUM_ptr bn(ASN1_INTEGER_to_BN(serial, nullptr));
+    if (!bn) {
+        throw OpenSSLException("Failed to convert serial number to BIGNUM");
+    }
+
+    char* str = BN_bn2hex(bn.get());
+    if (!str) {
+        throw OpenSSLException("Failed to convert serial number to hex string");
+    }
+
+    std::string result(str);
+    OPENSSL_free(str);
+    return result;
+}
+
+int64_t Certificate::get_not_before() const {
+    const ASN1_TIME* not_before = X509_get0_notBefore(cert_.get());
+    if (!not_before) {
+        throw OpenSSLException("Failed to get certificate not_before time");
+    }
+
+    struct tm tm_time;
+    if (ASN1_TIME_to_tm(not_before, &tm_time) != 1) {
+        throw OpenSSLException("Failed to convert not_before time");
+    }
+
+    return static_cast<int64_t>(timegm(&tm_time));
+}
+
+int64_t Certificate::get_not_after() const {
+    const ASN1_TIME* not_after = X509_get0_notAfter(cert_.get());
+    if (!not_after) {
+        throw OpenSSLException("Failed to get certificate not_after time");
+    }
+
+    struct tm tm_time;
+    if (ASN1_TIME_to_tm(not_after, &tm_time) != 1) {
+        throw OpenSSLException("Failed to convert not_after time");
+    }
+
+    return static_cast<int64_t>(timegm(&tm_time));
+}
+
+bool Certificate::is_valid_at(int64_t timestamp) const {
+    int64_t not_before = get_not_before();
+    int64_t not_after = get_not_after();
+    return timestamp >= not_before && timestamp <= not_after;
+}
+
+bool Certificate::matches_hostname(const std::string& hostname) const {
+    int result = X509_check_host(cert_.get(), hostname.c_str(), hostname.length(), 0, nullptr);
+    return result == 1;
+}
+
+EVP_PKEY_ptr Certificate::get_public_key() const {
+    EVP_PKEY* pkey = X509_get_pubkey(cert_.get());
+    if (!pkey) {
+        throw OpenSSLException("Failed to extract public key from certificate");
+    }
+    return EVP_PKEY_ptr(pkey);
+}
+
+std::array<uint8_t, 32> Certificate::get_spki_pin_sha256() const {
+    // Get the SubjectPublicKeyInfo structure
+    X509_PUBKEY* spki = X509_get_X509_PUBKEY(cert_.get());
+    if (!spki) {
+        throw OpenSSLException("Failed to get SubjectPublicKeyInfo");
+    }
+
+    // Encode SPKI to DER
+    uint8_t* spki_der = nullptr;
+    int spki_len = i2d_X509_PUBKEY(spki, &spki_der);
+    if (spki_len < 0 || !spki_der) {
+        throw OpenSSLException("Failed to encode SPKI to DER");
+    }
+
+    // Compute SHA-256 hash
+    std::array<uint8_t, 32> hash;
+    unsigned int hash_len = 0;
+
+    if (EVP_Digest(spki_der, static_cast<size_t>(spki_len), hash.data(), &hash_len, EVP_sha256(), nullptr) != 1) {
+        OPENSSL_free(spki_der);
+        throw OpenSSLException("Failed to compute SHA-256 hash of SPKI");
+    }
+
+    OPENSSL_free(spki_der);
+
+    if (hash_len != 32) {
+        throw OpenSSLException("Unexpected SHA-256 hash length");
+    }
+
+    return hash;
+}
+
+std::array<uint8_t, 48> Certificate::get_spki_pin_sha384() const {
+    // Get the SubjectPublicKeyInfo structure
+    X509_PUBKEY* spki = X509_get_X509_PUBKEY(cert_.get());
+    if (!spki) {
+        throw OpenSSLException("Failed to get SubjectPublicKeyInfo");
+    }
+
+    // Encode SPKI to DER
+    uint8_t* spki_der = nullptr;
+    int spki_len = i2d_X509_PUBKEY(spki, &spki_der);
+    if (spki_len < 0 || !spki_der) {
+        throw OpenSSLException("Failed to encode SPKI to DER");
+    }
+
+    // Compute SHA-384 hash
+    std::array<uint8_t, 48> hash;
+    unsigned int hash_len = 0;
+
+    if (EVP_Digest(spki_der, static_cast<size_t>(spki_len), hash.data(), &hash_len, EVP_sha384(), nullptr) != 1) {
+        OPENSSL_free(spki_der);
+        throw OpenSSLException("Failed to compute SHA-384 hash of SPKI");
+    }
+
+    OPENSSL_free(spki_der);
+
+    if (hash_len != 48) {
+        throw OpenSSLException("Unexpected SHA-384 hash length");
+    }
+
+    return hash;
 }
 
 // ============================================================================

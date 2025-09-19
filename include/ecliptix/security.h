@@ -1,442 +1,231 @@
-#pragma once
-
 /*
- * Ecliptix Security Library - Main C API
- * Provides SSL pinning, encryption, and digital signature functionality
+ * Ecliptix Security Library - C API Header
+ * Minimal C interface for legacy compatibility
  */
 
-#include "types.h"
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// ============================================================================
-// Library Initialization and Cleanup
-// ============================================================================
-
-/**
- * Initialize the Ecliptix security library
- * Must be called before any other functions
- *
- * @return ECLIPTIX_SUCCESS on success, error code otherwise
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_init(void);
-
-/**
- * Initialize with custom parameters
- *
- * @param log_callback Optional logging callback
- * @param error_callback Optional error handling callback
- * @param user_data User data passed to callbacks
- * @return ECLIPTIX_SUCCESS on success, error code otherwise
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_init_ex(ecliptix_log_callback_t log_callback,
-                 ecliptix_error_callback_t error_callback,
-                 void* user_data);
-
-/**
- * Cleanup the library and free all resources
- * Should be called before program termination
- */
-ECLIPTIX_API void ECLIPTIX_CALL
-ecliptix_cleanup(void);
-
-/**
- * Check if the library is initialized
- *
- * @return 1 if initialized, 0 otherwise
- */
-ECLIPTIX_API int ECLIPTIX_CALL
-ecliptix_is_initialized(void);
-
-/**
- * Get library version information
- *
- * @param version_info Pointer to version info structure to fill
- * @return ECLIPTIX_SUCCESS on success, error code otherwise
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_get_version(ecliptix_version_info_t* version_info);
+#include <stdint.h>
+#include <stddef.h>
 
 // ============================================================================
-// SSL Certificate Validation and Pinning
+// API Macros
 // ============================================================================
 
-/**
- * Validate a certificate using SSL pinning
- *
- * @param cert_der Certificate in DER format
- * @param cert_size Size of certificate data
- * @param hostname Hostname to validate against
- * @param validation_flags Validation flags (time, hostname, chain, pin)
- * @return ECLIPTIX_SUCCESS if certificate is valid and pinned
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_validate_certificate(const uint8_t* cert_der,
-                              size_t cert_size,
-                              const char* hostname,
-                              ecliptix_cert_validation_flags_t validation_flags);
-
-/**
- * Validate a certificate chain
- *
- * @param certs Array of certificates in DER format
- * @param cert_sizes Array of certificate sizes
- * @param cert_count Number of certificates in chain
- * @param hostname Hostname to validate against
- * @param validation_flags Validation flags
- * @return ECLIPTIX_SUCCESS if chain is valid
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_validate_certificate_chain(const uint8_t** certs,
-                                    const size_t* cert_sizes,
-                                    size_t cert_count,
-                                    const char* hostname,
-                                    ecliptix_cert_validation_flags_t validation_flags);
-
-/**
- * Extract certificate information
- *
- * @param cert_der Certificate in DER format
- * @param cert_size Size of certificate data
- * @param cert_info Pointer to structure to fill with certificate info
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_get_certificate_info(const uint8_t* cert_der,
-                              size_t cert_size,
-                              ecliptix_cert_info_t* cert_info);
-
-/**
- * Check if a certificate matches any of the pinned public keys
- *
- * @param cert_der Certificate in DER format
- * @param cert_size Size of certificate data
- * @param pin_mode Pinning mode (strict, backup, allow_new)
- * @return ECLIPTIX_SUCCESS if certificate is pinned
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_check_certificate_pin(const uint8_t* cert_der,
-                               size_t cert_size,
-                               ecliptix_pin_mode_t pin_mode);
-
-/**
- * Add a new backup pin (for key rotation)
- *
- * @param pin_sha384 SHA-384 hash of the public key
- * @param pin_index Index of backup pin to replace (0-2)
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_add_backup_pin(const uint8_t pin_sha384[48],
-                        uint32_t pin_index);
+#ifdef _WIN32
+    #ifdef BUILDING_ECLIPTIX
+        #define ECLIPTIX_API __declspec(dllexport)
+    #else
+        #define ECLIPTIX_API __declspec(dllimport)
+    #endif
+    #define ECLIPTIX_CALL __cdecl
+#else
+    #define ECLIPTIX_API __attribute__((visibility("default")))
+    #define ECLIPTIX_CALL
+#endif
 
 // ============================================================================
-// Symmetric Encryption
+// Error Codes
 // ============================================================================
 
-/**
- * Encrypt data using AES-256-GCM
- *
- * @param plaintext Data to encrypt
- * @param plaintext_size Size of plaintext
- * @param key Encryption key (32 bytes for AES-256)
- * @param key_size Size of encryption key
- * @param ciphertext Buffer for encrypted data
- * @param ciphertext_size Pointer to ciphertext buffer size (in/out)
- * @param nonce Buffer for nonce/IV (12 bytes)
- * @param tag Buffer for authentication tag (16 bytes)
- * @param associated_data Optional associated data for authentication
- * @param associated_data_size Size of associated data
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_encrypt_aes_gcm(const uint8_t* plaintext,
-                         size_t plaintext_size,
-                         const uint8_t* key,
-                         size_t key_size,
-                         uint8_t* ciphertext,
-                         size_t* ciphertext_size,
-                         uint8_t nonce[ECLIPTIX_AES_GCM_IV_SIZE],
-                         uint8_t tag[ECLIPTIX_AES_GCM_TAG_SIZE],
-                         const uint8_t* associated_data,
-                         size_t associated_data_size);
-
-/**
- * Decrypt data using AES-256-GCM
- *
- * @param ciphertext Encrypted data
- * @param ciphertext_size Size of ciphertext
- * @param key Decryption key
- * @param key_size Size of decryption key
- * @param nonce Nonce/IV used for encryption
- * @param tag Authentication tag
- * @param plaintext Buffer for decrypted data
- * @param plaintext_size Pointer to plaintext buffer size (in/out)
- * @param associated_data Associated data for authentication
- * @param associated_data_size Size of associated data
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_decrypt_aes_gcm(const uint8_t* ciphertext,
-                         size_t ciphertext_size,
-                         const uint8_t* key,
-                         size_t key_size,
-                         const uint8_t nonce[ECLIPTIX_AES_GCM_IV_SIZE],
-                         const uint8_t tag[ECLIPTIX_AES_GCM_TAG_SIZE],
-                         uint8_t* plaintext,
-                         size_t* plaintext_size,
-                         const uint8_t* associated_data,
-                         size_t associated_data_size);
-
-/**
- * Encrypt data using ChaCha20-Poly1305
- *
- * @param plaintext Data to encrypt
- * @param plaintext_size Size of plaintext
- * @param key Encryption key (32 bytes)
- * @param nonce Nonce (12 bytes)
- * @param ciphertext Buffer for encrypted data
- * @param ciphertext_size Pointer to ciphertext buffer size (in/out)
- * @param tag Buffer for authentication tag (16 bytes)
- * @param associated_data Optional associated data
- * @param associated_data_size Size of associated data
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_encrypt_chacha20_poly1305(const uint8_t* plaintext,
-                                   size_t plaintext_size,
-                                   const uint8_t key[ECLIPTIX_CHACHA20_KEY_SIZE],
-                                   const uint8_t nonce[ECLIPTIX_CHACHA20_NONCE_SIZE],
-                                   uint8_t* ciphertext,
-                                   size_t* ciphertext_size,
-                                   uint8_t tag[ECLIPTIX_CHACHA20_TAG_SIZE],
-                                   const uint8_t* associated_data,
-                                   size_t associated_data_size);
-
-/**
- * Decrypt data using ChaCha20-Poly1305
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_decrypt_chacha20_poly1305(const uint8_t* ciphertext,
-                                   size_t ciphertext_size,
-                                   const uint8_t key[ECLIPTIX_CHACHA20_KEY_SIZE],
-                                   const uint8_t nonce[ECLIPTIX_CHACHA20_NONCE_SIZE],
-                                   const uint8_t tag[ECLIPTIX_CHACHA20_TAG_SIZE],
-                                   uint8_t* plaintext,
-                                   size_t* plaintext_size,
-                                   const uint8_t* associated_data,
-                                   size_t associated_data_size);
+typedef enum {
+    ECLIPTIX_SUCCESS = 0,
+    ECLIPTIX_ERR_NOT_INITIALIZED = -1,
+    ECLIPTIX_ERR_ALREADY_INITIALIZED = -2,
+    ECLIPTIX_ERR_INVALID_PARAM = -3,
+    ECLIPTIX_ERR_MEMORY_ALLOCATION = -4,
+    ECLIPTIX_ERR_CRYPTO_FAILURE = -5,
+    ECLIPTIX_ERR_CERT_INVALID = -6,
+    ECLIPTIX_ERR_CERT_EXPIRED = -7,
+    ECLIPTIX_ERR_CERT_NOT_YET_VALID = -8,
+    ECLIPTIX_ERR_HOSTNAME_MISMATCH = -9,
+    ECLIPTIX_ERR_PIN_MISMATCH = -10,
+    ECLIPTIX_ERR_SIGNATURE_INVALID = -11,
+    ECLIPTIX_ERR_DECRYPTION_FAILED = -12,
+    ECLIPTIX_ERR_TAMPERED = -13,
+    ECLIPTIX_ERR_BUFFER_TOO_SMALL = -14,
+    ECLIPTIX_ERR_INVALID_CERT = -15,
+    ECLIPTIX_ERR_INVALID_CHAIN = -16,
+    ECLIPTIX_ERR_OUT_OF_MEMORY = -17,
+    ECLIPTIX_ERR_UNSUPPORTED = -18,
+    ECLIPTIX_ERR_TIMEOUT = -19,
+    ECLIPTIX_ERR_UNKNOWN = -99
+} ecliptix_result_t;
 
 // ============================================================================
-// Digital Signatures
+// Validation Flags
 // ============================================================================
 
-/**
- * Sign data using Ed25519
- *
- * @param message Data to sign
- * @param message_size Size of message
- * @param signature Buffer for signature (64 bytes)
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_sign_ed25519(const uint8_t* message,
-                      size_t message_size,
-                      uint8_t signature[ECLIPTIX_ED25519_SIGNATURE_SIZE]);
-
-/**
- * Verify Ed25519 signature
- *
- * @param message Original message
- * @param message_size Size of message
- * @param signature Signature to verify
- * @param public_key Public key for verification (optional, uses embedded if NULL)
- * @return ECLIPTIX_SUCCESS if signature is valid
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_verify_ed25519(const uint8_t* message,
-                        size_t message_size,
-                        const uint8_t signature[ECLIPTIX_ED25519_SIGNATURE_SIZE],
-                        const uint8_t* public_key);
-
-/**
- * Sign data using ECDSA P-384
- *
- * @param message Data to sign
- * @param message_size Size of message
- * @param signature Buffer for signature
- * @param signature_size Pointer to signature buffer size (in/out)
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_sign_ecdsa_p384(const uint8_t* message,
-                         size_t message_size,
-                         uint8_t* signature,
-                         size_t* signature_size);
-
-/**
- * Verify ECDSA P-384 signature
- *
- * @param message Original message
- * @param message_size Size of message
- * @param signature Signature to verify
- * @param signature_size Size of signature
- * @param public_key Public key for verification
- * @return ECLIPTIX_SUCCESS if signature is valid
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_verify_ecdsa_p384(const uint8_t* message,
-                           size_t message_size,
-                           const uint8_t* signature,
-                           size_t signature_size,
-                           const uint8_t* public_key);
+typedef enum {
+    ECLIPTIX_CERT_VALIDATE_NONE = 0,
+    ECLIPTIX_CERT_VALIDATE_TIME = 1 << 0,
+    ECLIPTIX_CERT_VALIDATE_HOSTNAME = 1 << 1,
+    ECLIPTIX_CERT_VALIDATE_CHAIN = 1 << 2,
+    ECLIPTIX_CERT_VALIDATE_PIN = 1 << 3,
+    ECLIPTIX_CERT_VALIDATE_ALL = 0xFF
+} ecliptix_cert_validation_flags_t;
 
 // ============================================================================
-// Key Management
+// Pin Mode Flags
 // ============================================================================
 
-/**
- * Generate random bytes using secure random number generator
- *
- * @param buffer Buffer to fill with random data
- * @param size Number of random bytes to generate
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_random_bytes(uint8_t* buffer, size_t size);
-
-/**
- * Derive key using HKDF-SHA384
- *
- * @param input_key Input key material
- * @param input_key_size Size of input key
- * @param salt Optional salt (can be NULL)
- * @param salt_size Size of salt
- * @param info Optional context info
- * @param info_size Size of info
- * @param output_key Buffer for derived key
- * @param output_key_size Desired output key size
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_derive_key_hkdf(const uint8_t* input_key,
-                         size_t input_key_size,
-                         const uint8_t* salt,
-                         size_t salt_size,
-                         const uint8_t* info,
-                         size_t info_size,
-                         uint8_t* output_key,
-                         size_t output_key_size);
-
-/**
- * Secure memory allocation
- *
- * @param size Size of memory to allocate
- * @param protection Memory protection level
- * @return Pointer to allocated memory, NULL on failure
- */
-ECLIPTIX_API void* ECLIPTIX_CALL
-ecliptix_secure_alloc(size_t size, ecliptix_memory_protection_t protection);
-
-/**
- * Secure memory deallocation with automatic wiping
- *
- * @param ptr Pointer to memory to free
- * @param size Size of memory block
- */
-ECLIPTIX_API void ECLIPTIX_CALL
-ecliptix_secure_free(void* ptr, size_t size);
-
-/**
- * Secure memory wipe
- *
- * @param ptr Pointer to memory to wipe
- * @param size Size of memory to wipe
- */
-ECLIPTIX_API void ECLIPTIX_CALL
-ecliptix_secure_wipe(void* ptr, size_t size);
+typedef enum {
+    ECLIPTIX_PIN_MODE_STRICT = 0,
+    ECLIPTIX_PIN_MODE_BACKUP = 1,
+    ECLIPTIX_PIN_MODE_ALLOW_NEW = 2
+} ecliptix_pin_mode_t;
 
 // ============================================================================
-// Session Management
+// Callback Types
 // ============================================================================
 
-/**
- * Create a new session context
- *
- * @param params Session parameters
- * @param session Pointer to session handle (output)
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_session_create(const ecliptix_session_params_t* params,
-                        ecliptix_session_t** session);
+// Forward declaration
+typedef struct ecliptix_error_info_t ecliptix_error_info_t;
 
-/**
- * Destroy a session and free resources
- *
- * @param session Session handle to destroy
- */
-ECLIPTIX_API void ECLIPTIX_CALL
-ecliptix_session_destroy(ecliptix_session_t* session);
-
-/**
- * Set session timeout
- *
- * @param session Session handle
- * @param timeout_seconds Timeout in seconds
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_session_set_timeout(ecliptix_session_t* session,
-                             uint32_t timeout_seconds);
+typedef void (*ecliptix_log_callback_t)(int level, const char* message);
+typedef void (*ecliptix_error_callback_t)(ecliptix_error_info_t* error_info, void* user_data);
 
 // ============================================================================
-// Utility Functions
+// Structure Types
 // ============================================================================
 
-/**
- * Get the last error message
- *
- * @return Pointer to error message string
- */
-ECLIPTIX_API const char* ECLIPTIX_CALL
-ecliptix_get_error_message(void);
+struct ecliptix_error_info_t {
+    int code;
+    char message[256];
+    const char* function;
+    uint32_t line;
+    uint64_t timestamp;
+    uint32_t thread_id;
+};
 
-/**
- * Get performance metrics
- *
- * @param metrics Pointer to metrics structure to fill
- * @return ECLIPTIX_SUCCESS on success
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_get_metrics(ecliptix_metrics_t* metrics);
+typedef struct {
+    int major;
+    int minor;
+    int patch;
+    int build;
+    char version_string[32];
+    char build_date[32];
+    const char* commit_hash;
+    uint64_t build_timestamp;
+} ecliptix_version_info_t;
 
-/**
- * Reset performance metrics
- */
-ECLIPTIX_API void ECLIPTIX_CALL
-ecliptix_reset_metrics(void);
+typedef struct {
+    uint64_t operations_total;
+    uint64_t operations_successful;
+    uint64_t operations_failed;
+    uint64_t certificates_validated;
+    uint64_t pins_checked;
+    uint64_t encryptions_performed;
+    uint64_t signatures_created;
+    uint64_t signatures_verified;
+} ecliptix_metrics_t;
 
-/**
- * Self-test the library integrity
- *
- * @return ECLIPTIX_SUCCESS if all tests pass
- */
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL
-ecliptix_self_test(void);
+// ============================================================================
+// Library Management
+// ============================================================================
 
-/**
- * Convert result code to human-readable string
- *
- * @param result Result code
- * @return Pointer to string description
- */
-ECLIPTIX_API const char* ECLIPTIX_CALL
-ecliptix_result_to_string(ecliptix_result_t result);
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_init(void);
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_init_ex(
+    ecliptix_log_callback_t log_callback,
+    ecliptix_error_callback_t error_callback,
+    void* user_data
+);
+ECLIPTIX_API void ECLIPTIX_CALL ecliptix_cleanup(void);
+ECLIPTIX_API int ECLIPTIX_CALL ecliptix_is_initialized(void);
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_get_version(ecliptix_version_info_t* version_info);
+ECLIPTIX_API const char* ECLIPTIX_CALL ecliptix_get_error_message(void);
+ECLIPTIX_API const char* ECLIPTIX_CALL ecliptix_version(void);
+
+// ============================================================================
+// Certificate Validation and Pinning
+// ============================================================================
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_validate_certificate(
+    const uint8_t* cert_der,
+    size_t cert_size,
+    const char* hostname,
+    ecliptix_cert_validation_flags_t validation_flags
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin(
+    const uint8_t* cert_der,
+    size_t cert_size,
+    const uint8_t* trusted_pins,
+    size_t num_pins
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_check_certificate_pin_ex(
+    const uint8_t* cert_der,
+    size_t cert_size,
+    ecliptix_pin_mode_t pin_mode
+);
+
+// ============================================================================
+// Cryptographic Operations
+// ============================================================================
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_generate_random(uint8_t* buffer, size_t size);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_aead(
+    const uint8_t* plaintext,
+    size_t plaintext_size,
+    const uint8_t* key,
+    size_t key_size,
+    const uint8_t* associated_data,
+    size_t associated_data_size,
+    uint8_t* ciphertext,
+    size_t* ciphertext_size,
+    uint8_t* nonce,
+    uint8_t* tag
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_aead(
+    const uint8_t* ciphertext,
+    size_t ciphertext_size,
+    const uint8_t* key,
+    size_t key_size,
+    const uint8_t* associated_data,
+    size_t associated_data_size,
+    const uint8_t* nonce,
+    const uint8_t* tag,
+    uint8_t* plaintext,
+    size_t* plaintext_size
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_sign_ed25519(
+    const uint8_t* message,
+    size_t message_size,
+    const uint8_t* private_key,
+    uint8_t* signature
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
+    const uint8_t* message,
+    size_t message_size,
+    const uint8_t* signature,
+    const uint8_t* public_key
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_hash_blake2b(
+    const uint8_t* data,
+    size_t data_size,
+    uint8_t* hash,
+    size_t hash_size
+);
+
+// ============================================================================
+// Statistics and Diagnostics
+// ============================================================================
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_get_stats(
+    uint64_t* operations_total,
+    uint64_t* operations_successful,
+    uint64_t* operations_failed
+);
 
 #ifdef __cplusplus
 }

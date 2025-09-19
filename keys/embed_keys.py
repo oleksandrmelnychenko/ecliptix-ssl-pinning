@@ -61,9 +61,10 @@ def extract_certificate_info(cert_der: bytes) -> Dict[str, Any]:
         cert = x509.load_der_x509_certificate(cert_der, default_backend())
 
         # Extract public key
+        from cryptography.hazmat.primitives import serialization
         public_key_der = cert.public_key().public_bytes(
-            encoding=x509.Encoding.DER,
-            format=x509.PublicFormat.SubjectPublicKeyInfo
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
         # Calculate pins
@@ -224,7 +225,7 @@ constexpr std::array<uint8_t, {len(ed25519_private_obfuscated)}> ED25519_PRIVATE
 
 // Certificate fingerprint for integrity check
 constexpr std::array<uint8_t, 32> CERT_FINGERPRINT_SHA256 = {{
-{format_byte_array(list(cert_info.get('fingerprint_sha256', b'\\x00' * 32)))}
+{format_byte_array(list(cert_info.get('fingerprint_sha256', b'\x00' * 32)))}
 }};
 
 // Trusted domains for SSL pinning
@@ -390,9 +391,9 @@ constexpr std::array<std::array<uint8_t, 48>, {len(backup_pins)}> BACKUP_PINS = 
             pin_header += ","
         pin_header += "\n"
 
-    pin_header += '''}}};
+    pin_header += '''}};
 
-}} // namespace ecliptix::pinning
+} // namespace ecliptix::pinning
 '''
 
     with open(embedded_dir / "embedded_pins.hpp", 'w') as f:

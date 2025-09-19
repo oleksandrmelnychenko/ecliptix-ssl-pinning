@@ -43,32 +43,37 @@ python3 embed_keys.py
 
 ### Core Components
 
-1. **C API Layer** (`include/ecliptix/security.h`, `src/security.cpp`)
-   - Main public interface with comprehensive C API
-   - SSL certificate validation and pinning
-   - AES-256-GCM and ChaCha20-Poly1305 encryption
-   - Ed25519 and ECDSA P-384 digital signatures
-   - Performance metrics and error handling
+1. **Public API Layer** (`include/ecliptix/public_api.h`, `include/ecliptix/ecliptix.hpp`)
+   - Clean, comprehensive C API for all platforms
+   - Modern C++ RAII wrapper for safe usage
+   - Essential crypto operations: encrypt, decrypt, sign, verify, hash
+   - SSL certificate validation with pinning
+   - Secure key derivation and random generation
 
-2. **C++ Wrapper Layer** (`include/ecliptix/security.hpp`)
-   - Modern C++20 RAII-based interface
-   - Exception-safe error handling
-   - Type-safe cryptographic operations
+2. **Legacy API Layer** (`include/ecliptix/security.h`, `src/security.cpp`)
+   - Extended C API with advanced features
+   - Performance metrics and detailed error handling
+   - Compatibility functions for complex scenarios
 
-3. **OpenSSL Integration** (`include/internal/openssl_wrapper.hpp`, `src/openssl_wrapper.cpp`)
-   - High-level C++ wrappers around OpenSSL
-   - Certificate parsing and validation
-   - Cryptographic primitives implementation
+3. **Libsodium Integration** (`include/internal/sodium_wrapper.hpp`)
+   - Memory-safe cryptographic operations
+   - ChaCha20-Poly1305, Ed25519, Blake2b, Argon2id
+   - Constant-time operations and secure memory management
 
-4. **Embedded Security** (`embedded/embedded_keys.hpp`)
-   - XOR-obfuscated certificate pins and keys
+4. **OpenSSL Integration** (`include/internal/openssl_wrapper.hpp`, `src/openssl_wrapper.cpp`)
+   - SSL/TLS certificate parsing and validation
+   - Legacy cryptographic algorithm support
+   - Certificate chain verification
+
+5. **Embedded Security** (`embedded/embedded_keys.hpp`)
+   - XOR-obfuscated certificate pins (no private keys)
    - Runtime integrity verification
    - Anti-tampering mechanisms
 
-5. **PKI Infrastructure** (`keys/`)
-   - Complete certificate authority chain generation
-   - Ed25519 and ECDSA key pair generation
-   - Automated key embedding system
+6. **PKI Infrastructure** (`keys/`)
+   - Certificate authority chain generation for testing
+   - Pin generation and embedding automation
+   - Key rotation support
 
 ### Key Security Features
 
@@ -111,5 +116,65 @@ The library is designed for integration with .NET applications via P/Invoke, pro
 - CMake 3.20 or higher
 - Python 3 (for key embedding)
 - Bash (for PKI generation)
+
+## Security Improvements & Best Practices
+
+### ✅ Critical Security Fixes Applied
+
+1. **Removed Embedded Private Keys**
+   - Eliminated Ed25519 private keys from binary
+   - Signing now requires external key provision
+   - Prevents key extraction from reverse engineering
+
+2. **Enhanced Cryptographic Implementation**
+   - Integrated libsodium for memory-safe operations
+   - Added ChaCha20-Poly1305 with automatic nonce generation
+   - Implemented Blake2b hashing (faster than SHA-2)
+   - Added Argon2id for secure password-based key derivation
+
+3. **Improved Memory Security**
+   - Secure memory allocation with automatic wiping
+   - Memory locking to prevent swapping to disk
+   - Constant-time comparisons to prevent timing attacks
+   - RAII patterns for guaranteed cleanup
+
+4. **Dynamic Pin Management**
+   - Pin versioning and expiration support
+   - Authenticated pin updates via signatures
+   - Multiple backup pins for key rotation
+
+### 🎯 Recommended Usage Patterns
+
+**For Encryption:**
+```cpp
+// Use the clean public API
+auto key = ecliptix::random_bytes<32>();
+auto encrypted = ecliptix::encrypt(plaintext, key, associated_data);
+auto decrypted = ecliptix::decrypt(encrypted, key, associated_data);
+```
+
+**For Digital Signatures:**
+```cpp
+// Generate keys on secure server, distribute public keys only
+ecliptix::KeyPair server_keypair;  // Server-side only
+auto signature = ecliptix::sign(message, server_keypair.private_key());
+bool valid = ecliptix::verify(message, signature, public_key);  // Client-side
+```
+
+**For SSL Pinning:**
+```cpp
+// Certificate validation with embedded pins
+ecliptix::validate_certificate(cert_der, hostname);
+```
+
+### 🔒 Security Guidelines
+
+- **Never embed private keys** in client applications
+- **Use libsodium functions** for new implementations (memory-safe)
+- **Lock sensitive memory** with `ecliptix_secure_malloc()`
+- **Verify all certificates** against pinned public keys
+- **Rotate pins periodically** using authenticated updates
+- **Use Argon2id** for password-based key derivation
+- **Implement rate limiting** for cryptographic operations
 
 The library follows defensive security practices and should only be used for legitimate security applications.
