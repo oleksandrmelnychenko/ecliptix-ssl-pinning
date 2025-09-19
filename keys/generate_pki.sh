@@ -37,9 +37,9 @@ cd "${GENERATED_DIR}"
 
 log_info "Starting Ecliptix PKI generation..."
 
-# Generate Root CA private key (P-384 for maximum security)
+# Generate Root CA private key (RSA-4096 for maximum security)
 log_info "Generating Root CA private key..."
-openssl ecparam -genkey -name secp384r1 -out ecliptix_root_ca_private.pem
+openssl genrsa -out ecliptix_root_ca_private.pem 4096
 
 # Generate Root CA certificate
 log_info "Generating Root CA certificate..."
@@ -63,7 +63,7 @@ EOF
 
 # Generate Intermediate CA private key
 log_info "Generating Intermediate CA private key..."
-openssl ecparam -genkey -name secp384r1 -out ecliptix_intermediate_ca_private.pem
+openssl genrsa -out ecliptix_intermediate_ca_private.pem 4096
 
 # Generate Intermediate CA certificate request
 log_info "Generating Intermediate CA certificate request..."
@@ -89,13 +89,13 @@ authorityKeyIdentifier = keyid:always,issuer
 EOF
 )
 
-# Generate Server private key
+# Generate Server private key (RSA-2048 for efficient encryption)
 log_info "Generating Server private key..."
-openssl ecparam -genkey -name secp384r1 -out ecliptix_server_private.pem
+openssl genrsa -out ecliptix_server_private.pem 2048
 
 # Generate Server public key
 log_info "Extracting Server public key..."
-openssl ec -in ecliptix_server_private.pem -pubout -out ecliptix_server_public.pem
+openssl rsa -in ecliptix_server_private.pem -pubout -out ecliptix_server_public.pem
 
 # Generate Server certificate request
 log_info "Generating Server certificate request..."
@@ -137,7 +137,7 @@ cat ecliptix_server_cert.pem ecliptix_intermediate_ca_cert.pem ecliptix_root_ca_
 
 # Generate Client certificate for mutual TLS (optional)
 log_info "Generating Client certificate..."
-openssl ecparam -genkey -name secp384r1 -out ecliptix_client_private.pem
+openssl genrsa -out ecliptix_client_private.pem 2048
 openssl req -new -key ecliptix_client_private.pem \
     -out ecliptix_client.csr \
     -subj "/C=US/ST=California/L=San Francisco/O=Ecliptix Security/OU=Client/CN=Ecliptix Client"
@@ -163,8 +163,8 @@ EOF
 log_info "Generating backup keys for rotation..."
 for i in {1..3}; do
     log_info "Generating backup key set ${i}..."
-    openssl ecparam -genkey -name secp384r1 -out "ecliptix_backup_${i}_private.pem"
-    openssl ec -in "ecliptix_backup_${i}_private.pem" -pubout -out "ecliptix_backup_${i}_public.pem"
+    openssl genrsa -out "ecliptix_backup_${i}_private.pem" 2048
+    openssl rsa -in "ecliptix_backup_${i}_private.pem" -pubout -out "ecliptix_backup_${i}_public.pem"
 
     # Generate backup certificate
     openssl req -new -key "ecliptix_backup_${i}_private.pem" \
@@ -237,8 +237,8 @@ openssl x509 -in ecliptix_intermediate_ca_cert.pem -outform der -out ecliptix_in
 openssl x509 -in ecliptix_root_ca_cert.pem -outform der -out ecliptix_root_ca_cert.der
 
 # Convert keys to DER format
-openssl ec -in ecliptix_server_private.pem -outform der -out ecliptix_server_private.der
-openssl pkey -in ecliptix_server_public.pem -pubin -outform der -out ecliptix_server_public.der
+openssl rsa -in ecliptix_server_private.pem -outform der -out ecliptix_server_private.der
+openssl rsa -in ecliptix_server_public.pem -pubin -outform der -out ecliptix_server_public.der
 
 # Generate key fingerprints for verification
 log_info "Generating key fingerprints..."

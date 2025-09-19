@@ -1,7 +1,3 @@
-/*
- * Ecliptix Security Library - Memory Management Tests
- * Tests for secure memory allocation, wiping, and locking
- */
 
 #include <catch2/catch_test_macros.hpp>
 #include "ecliptix/core/secure_memory.hpp"
@@ -27,7 +23,7 @@ TEST_CASE("SecureBytes", "[memory][secure]") {
         REQUIRE(data[0] == std::byte{0xAB});
         REQUIRE(data[1] == std::byte{0xCD});
         REQUIRE(data.front() == std::byte{0xAB});
-        REQUIRE(data.back() == std::byte{0x00});  // Default initialized
+        REQUIRE(data.back() == std::byte{0x00});
     }
 
     SECTION("Secure comparison") {

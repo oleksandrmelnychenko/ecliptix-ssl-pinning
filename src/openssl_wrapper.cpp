@@ -1,7 +1,3 @@
-/*
- * OpenSSL Wrapper Implementation
- * Safe C++ wrapper around OpenSSL functions with RAII management
- */
 
 #include "internal/openssl_wrapper.hpp"
 #include <openssl/opensslconf.h>
@@ -25,7 +21,6 @@
 #include <cstring>
 #include <ctime>
 
-// Platform-specific time function
 #ifdef _WIN32
     #include <time.h>
     #define timegm _mkgmtime
@@ -36,14 +31,10 @@
 
 namespace ecliptix::openssl {
 
-// Forward declarations (implementation only)
 namespace {
     using EVP_PKEY_CTX_ptr = std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
 }
 
-// ============================================================================
-// OpenSSL Error Handling
-// ============================================================================
 
 std::string get_error_string(unsigned long error_code) {
     if (error_code == 0) {
@@ -79,9 +70,6 @@ void clear_errors() {
     ERR_clear_error();
 }
 
-// ============================================================================
-// Library Initialization
-// ============================================================================
 
 bool Library::initialized_ = false;
 
@@ -90,12 +78,10 @@ Library::Library() {
         return;
     }
 
-    // Initialize OpenSSL
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
 
-    // Initialize random number generator
     if (RAND_poll() != 1) {
         throw OpenSSLException("Failed to initialize random number generator");
     }
@@ -116,9 +102,6 @@ bool Library::is_initialized() {
     return initialized_;
 }
 
-// ============================================================================
-// Random Number Generation
-// ============================================================================
 
 void Random::bytes(std::span<uint8_t> buffer) {
     bytes(buffer.data(), buffer.size());
@@ -138,9 +121,6 @@ int Random::status() {
     return RAND_status();
 }
 
-// ============================================================================
-// Key Generation
-// ============================================================================
 
 std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ed25519() {
     EVP_PKEY_CTX_ptr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, nullptr), EVP_PKEY_CTX_free);
@@ -159,7 +139,6 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ed25519() {
 
     EVP_PKEY_ptr private_key(private_key_raw);
 
-    // Extract public key
     size_t public_key_len = 0;
     if (EVP_PKEY_get_raw_public_key(private_key.get(), nullptr, &public_key_len) != 1) {
         throw OpenSSLException("Failed to get Ed25519 public key length");
@@ -202,7 +181,6 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ecdsa_p384() {
 
     EVP_PKEY_ptr private_key(private_key_raw);
 
-    // Extract public key by serializing and deserializing
     std::vector<uint8_t> public_key_der = serialize_public_key(private_key.get());
     EVP_PKEY_ptr public_key = deserialize_public_key(public_key_der);
 
@@ -230,7 +208,6 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_rsa(int bits) {
 
     EVP_PKEY_ptr private_key(private_key_raw);
 
-    // Extract public key
     std::vector<uint8_t> public_key_der = serialize_public_key(private_key.get());
     EVP_PKEY_ptr public_key = deserialize_public_key(public_key_der);
 
@@ -254,7 +231,6 @@ std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> KeyGenerator::generate_ecdh_x25519() {
 
     EVP_PKEY_ptr private_key(private_key_raw);
 
-    // Extract public key
     size_t public_key_len = 0;
     if (EVP_PKEY_get_raw_public_key(private_key.get(), nullptr, &public_key_len) != 1) {
         throw OpenSSLException("Failed to get X25519 public key length");
@@ -342,9 +318,6 @@ EVP_PKEY_ptr KeyGenerator::deserialize_private_key(std::span<const uint8_t> data
     return EVP_PKEY_ptr(key);
 }
 
-// ============================================================================
-// AES-GCM Implementation
-// ============================================================================
 
 AES_GCM::EncryptResult AES_GCM::encrypt(
     std::span<const uint8_t> plaintext,
@@ -353,7 +326,6 @@ AES_GCM::EncryptResult AES_GCM::encrypt(
 
     EncryptResult result;
 
-    // Generate random IV
     Random::bytes(result.iv);
 
     result = encrypt_with_iv(plaintext, key, result.iv, associated_data);
@@ -374,22 +346,18 @@ AES_GCM::EncryptResult AES_GCM::encrypt_with_iv(
         throw OpenSSLException("Failed to create cipher context");
     }
 
-    // Initialize encryption
     if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
         throw OpenSSLException("Failed to initialize AES-256-GCM encryption");
     }
 
-    // Set IV length
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, nullptr) != 1) {
         throw OpenSSLException("Failed to set GCM IV length");
     }
 
-    // Set key and IV
     if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), iv.data()) != 1) {
         throw OpenSSLException("Failed to set key and IV");
     }
 
-    // Set associated data if provided
     if (!associated_data.empty()) {
         int len;
         if (EVP_EncryptUpdate(ctx.get(), nullptr, &len, associated_data.data(),
@@ -398,7 +366,6 @@ AES_GCM::EncryptResult AES_GCM::encrypt_with_iv(
         }
     }
 
-    // Encrypt
     result.ciphertext.resize(plaintext.size());
     int len;
     if (EVP_EncryptUpdate(ctx.get(), result.ciphertext.data(), &len,
@@ -408,7 +375,6 @@ AES_GCM::EncryptResult AES_GCM::encrypt_with_iv(
 
     int ciphertext_len = len;
 
-    // Finalize encryption
     if (EVP_EncryptFinal_ex(ctx.get(), result.ciphertext.data() + len, &len) != 1) {
         throw OpenSSLException("Failed to finalize encryption");
     }
@@ -416,7 +382,6 @@ AES_GCM::EncryptResult AES_GCM::encrypt_with_iv(
     ciphertext_len += len;
     result.ciphertext.resize(static_cast<size_t>(ciphertext_len));
 
-    // Get authentication tag
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, TAG_SIZE, result.tag.data()) != 1) {
         throw OpenSSLException("Failed to get authentication tag");
     }
@@ -436,22 +401,18 @@ std::vector<uint8_t> AES_GCM::decrypt(
         throw OpenSSLException("Failed to create cipher context");
     }
 
-    // Initialize decryption
     if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
         throw OpenSSLException("Failed to initialize AES-256-GCM decryption");
     }
 
-    // Set IV length
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, nullptr) != 1) {
         throw OpenSSLException("Failed to set GCM IV length");
     }
 
-    // Set key and IV
     if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), iv.data()) != 1) {
         throw OpenSSLException("Failed to set key and IV");
     }
 
-    // Set associated data if provided
     if (!associated_data.empty()) {
         int len;
         if (EVP_DecryptUpdate(ctx.get(), nullptr, &len, associated_data.data(),
@@ -460,7 +421,6 @@ std::vector<uint8_t> AES_GCM::decrypt(
         }
     }
 
-    // Decrypt
     std::vector<uint8_t> plaintext(ciphertext.size());
     int len;
     if (EVP_DecryptUpdate(ctx.get(), plaintext.data(), &len,
@@ -470,13 +430,11 @@ std::vector<uint8_t> AES_GCM::decrypt(
 
     int plaintext_len = len;
 
-    // Set expected tag
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_SIZE,
                            const_cast<uint8_t*>(tag.data())) != 1) {
         throw OpenSSLException("Failed to set authentication tag");
     }
 
-    // Finalize decryption and verify tag
     if (EVP_DecryptFinal_ex(ctx.get(), plaintext.data() + len, &len) != 1) {
         throw OpenSSLException("Authentication verification failed");
     }
@@ -487,9 +445,6 @@ std::vector<uint8_t> AES_GCM::decrypt(
     return plaintext;
 }
 
-// ============================================================================
-// Digital Signatures
-// ============================================================================
 
 std::vector<uint8_t> DigitalSignature::sign_ed25519(
     std::span<const uint8_t> message,
@@ -504,13 +459,11 @@ std::vector<uint8_t> DigitalSignature::sign_ed25519(
         throw OpenSSLException("Failed to initialize Ed25519 signing");
     }
 
-    // Get signature length
     size_t signature_len = 0;
     if (EVP_DigestSign(ctx.get(), nullptr, &signature_len, message.data(), message.size()) != 1) {
         throw OpenSSLException("Failed to get Ed25519 signature length");
     }
 
-    // Create signature
     std::vector<uint8_t> signature(signature_len);
     if (EVP_DigestSign(ctx.get(), signature.data(), &signature_len,
                       message.data(), message.size()) != 1) {
@@ -539,17 +492,14 @@ bool DigitalSignature::verify_ed25519(
                                  message.data(), message.size());
 
     if (result == 1) {
-        return true;  // Signature valid
+        return true;
     } else if (result == 0) {
-        return false; // Signature invalid
+        return false;
     } else {
         throw OpenSSLException("Ed25519 signature verification failed");
     }
 }
 
-// ============================================================================
-// Hash Functions
-// ============================================================================
 
 std::array<uint8_t, 32> Hash::sha256(std::span<const uint8_t> data) {
     std::array<uint8_t, 32> result;
@@ -610,9 +560,6 @@ std::vector<uint8_t> Hash::Context::finalize() {
     return digest;
 }
 
-// ============================================================================
-// Certificate Implementation
-// ============================================================================
 
 Certificate::Certificate(X509_ptr cert) : cert_(std::move(cert)) {}
 
@@ -766,20 +713,17 @@ EVP_PKEY_ptr Certificate::get_public_key() const {
 }
 
 std::array<uint8_t, 32> Certificate::get_spki_pin_sha256() const {
-    // Get the SubjectPublicKeyInfo structure
     X509_PUBKEY* spki = X509_get_X509_PUBKEY(cert_.get());
     if (!spki) {
         throw OpenSSLException("Failed to get SubjectPublicKeyInfo");
     }
 
-    // Encode SPKI to DER
     uint8_t* spki_der = nullptr;
     int spki_len = i2d_X509_PUBKEY(spki, &spki_der);
     if (spki_len < 0 || !spki_der) {
         throw OpenSSLException("Failed to encode SPKI to DER");
     }
 
-    // Compute SHA-256 hash
     std::array<uint8_t, 32> hash;
     unsigned int hash_len = 0;
 
@@ -798,20 +742,17 @@ std::array<uint8_t, 32> Certificate::get_spki_pin_sha256() const {
 }
 
 std::array<uint8_t, 48> Certificate::get_spki_pin_sha384() const {
-    // Get the SubjectPublicKeyInfo structure
     X509_PUBKEY* spki = X509_get_X509_PUBKEY(cert_.get());
     if (!spki) {
         throw OpenSSLException("Failed to get SubjectPublicKeyInfo");
     }
 
-    // Encode SPKI to DER
     uint8_t* spki_der = nullptr;
     int spki_len = i2d_X509_PUBKEY(spki, &spki_der);
     if (spki_len < 0 || !spki_der) {
         throw OpenSSLException("Failed to encode SPKI to DER");
     }
 
-    // Compute SHA-384 hash
     std::array<uint8_t, 48> hash;
     unsigned int hash_len = 0;
 
@@ -829,9 +770,6 @@ std::array<uint8_t, 48> Certificate::get_spki_pin_sha384() const {
     return hash;
 }
 
-// ============================================================================
-// Key Derivation
-// ============================================================================
 
 std::vector<uint8_t> KeyDerivation::hkdf_sha384(
     std::span<const uint8_t> input_key,
@@ -864,9 +802,6 @@ std::vector<uint8_t> KeyDerivation::hkdf_sha384(
     return output;
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 
 namespace utils {
 
@@ -902,6 +837,6 @@ std::string base64_encode(std::span<const uint8_t> data) {
     return std::string(buffer->data, buffer->length);
 }
 
-} // namespace utils
+}
 
-} // namespace ecliptix::openssl
+}

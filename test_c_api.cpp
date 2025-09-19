@@ -1,7 +1,3 @@
-/*
- * Simple C API Test
- * Test basic functionality of the C API
- */
 
 #include "ecliptix/security.h"
 #include "ecliptix/types.h"
@@ -11,7 +7,6 @@
 int main() {
     std::cout << "Testing Ecliptix Security Library C API..." << std::endl;
 
-    // Test library initialization
     std::cout << "1. Testing library initialization..." << std::endl;
     ecliptix_result_t result = ecliptix_init();
     if (result != ECLIPTIX_SUCCESS) {
@@ -20,7 +15,6 @@ int main() {
     }
     std::cout << "   ✓ Library initialized successfully" << std::endl;
 
-    // Test if library is initialized
     std::cout << "2. Testing library status..." << std::endl;
     int is_init = ecliptix_is_initialized();
     if (!is_init) {

@@ -1,7 +1,3 @@
-/*
- * Ecliptix Security Library - C Types Header
- * Type definitions for C API compatibility
- */
 
 #pragma once
 
@@ -12,9 +8,6 @@
 extern "C" {
 #endif
 
-// ============================================================================
-// Cryptographic Constants
-// ============================================================================
 
 #define ECLIPTIX_CHACHA20_KEY_SIZE 32
 #define ECLIPTIX_CHACHA20_NONCE_SIZE 12
@@ -29,9 +22,6 @@ extern "C" {
 #define ECLIPTIX_AES_GCM_IV_SIZE 12
 #define ECLIPTIX_AES_GCM_TAG_SIZE 16
 
-// ============================================================================
-// Library Version
-// ============================================================================
 
 #define ECLIPTIX_VERSION_MAJOR 1
 #define ECLIPTIX_VERSION_MINOR 0

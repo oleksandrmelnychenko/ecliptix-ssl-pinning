@@ -1,9 +1,5 @@
 #pragma once
 
-/*
- * OpenSSL Wrapper - Safe C++ wrapper around OpenSSL functions
- * Provides RAII management and exception safety
- */
 
 #include <memory>
 #include <string>
@@ -27,9 +23,6 @@
 
 namespace ecliptix::openssl {
 
-// ============================================================================
-// OpenSSL Error Handling
-// ============================================================================
 
 class OpenSSLException : public std::runtime_error {
 public:
@@ -42,22 +35,15 @@ private:
     unsigned long error_code_ = 0;
 };
 
-// Get last OpenSSL error as string
 std::string get_last_error();
 
-// Get OpenSSL error string from error code
 std::string get_openssl_error_string(unsigned long error_code);
 
-// Clear OpenSSL error queue
 void clear_errors();
 
-// ============================================================================
-// RAII Smart Pointers for OpenSSL Types
-// ============================================================================
 
 namespace detail {
 
-// Custom deleters for OpenSSL types
 struct EVP_PKEY_deleter {
     void operator()(EVP_PKEY* ptr) const { EVP_PKEY_free(ptr); }
 };
@@ -116,9 +102,8 @@ struct STACK_OF_X509_deleter {
     }
 };
 
-} // namespace detail
+}
 
-// Smart pointer type aliases
 using EVP_PKEY_ptr = std::unique_ptr<EVP_PKEY, detail::EVP_PKEY_deleter>;
 using X509_ptr = std::unique_ptr<X509, detail::X509_deleter>;
 using X509_STORE_ptr = std::unique_ptr<X509_STORE, detail::X509_STORE_deleter>;
@@ -134,16 +119,12 @@ using EC_KEY_ptr = std::unique_ptr<EC_KEY, detail::EC_KEY_deleter>;
 using RSA_ptr = std::unique_ptr<RSA, detail::RSA_deleter>;
 using STACK_OF_X509_ptr = std::unique_ptr<STACK_OF(X509), detail::STACK_OF_X509_deleter>;
 
-// ============================================================================
-// Initialization and Cleanup
-// ============================================================================
 
 class Library {
 public:
     Library();
     ~Library();
 
-    // Non-copyable, non-movable
     Library(const Library&) = delete;
     Library& operator=(const Library&) = delete;
     Library(Library&&) = delete;
@@ -155,9 +136,6 @@ private:
     static bool initialized_;
 };
 
-// ============================================================================
-// Random Number Generation
-// ============================================================================
 
 class Random {
 public:
@@ -175,43 +153,31 @@ public:
     static int status();
 };
 
-// ============================================================================
-// Key Generation
-// ============================================================================
 
 class KeyGenerator {
 public:
-    // Generate Ed25519 key pair
     static std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> generate_ed25519();
 
-    // Generate ECDSA P-384 key pair
     static std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> generate_ecdsa_p384();
 
-    // Generate RSA key pair
     static std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> generate_rsa(int bits = 4096);
 
-    // Generate ECDH key pair (X25519 or P-384)
     static std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> generate_ecdh_x25519();
     static std::pair<EVP_PKEY_ptr, EVP_PKEY_ptr> generate_ecdh_p384();
 
-    // Key serialization
     static std::vector<uint8_t> serialize_public_key(EVP_PKEY* key);
     static std::vector<uint8_t> serialize_private_key(EVP_PKEY* key);
 
-    // Key deserialization
     static EVP_PKEY_ptr deserialize_public_key(std::span<const uint8_t> data);
     static EVP_PKEY_ptr deserialize_private_key(std::span<const uint8_t> data);
 };
 
-// ============================================================================
-// Symmetric Encryption
-// ============================================================================
 
 class AES_GCM {
 public:
-    static constexpr size_t KEY_SIZE = 32;    // AES-256
-    static constexpr size_t IV_SIZE = 12;     // GCM IV
-    static constexpr size_t TAG_SIZE = 16;    // GCM tag
+    static constexpr size_t KEY_SIZE = 32;
+    static constexpr size_t IV_SIZE = 12;
+    static constexpr size_t TAG_SIZE = 16;
 
     struct EncryptResult {
         std::vector<uint8_t> ciphertext;
@@ -268,13 +234,9 @@ public:
     );
 };
 
-// ============================================================================
-// Digital Signatures
-// ============================================================================
 
 class DigitalSignature {
 public:
-    // Ed25519 signatures
     static std::vector<uint8_t> sign_ed25519(
         std::span<const uint8_t> message,
         EVP_PKEY* private_key
@@ -286,7 +248,6 @@ public:
         EVP_PKEY* public_key
     );
 
-    // ECDSA P-384 signatures
     static std::vector<uint8_t> sign_ecdsa_p384(
         std::span<const uint8_t> message,
         EVP_PKEY* private_key
@@ -298,7 +259,6 @@ public:
         EVP_PKEY* public_key
     );
 
-    // RSA-PSS signatures
     static std::vector<uint8_t> sign_rsa_pss(
         std::span<const uint8_t> message,
         EVP_PKEY* private_key,
@@ -313,18 +273,13 @@ public:
     );
 };
 
-// ============================================================================
-// Hash Functions
-// ============================================================================
 
 class Hash {
 public:
-    // SHA-2 family
     static std::array<uint8_t, 32> sha256(std::span<const uint8_t> data);
     static std::array<uint8_t, 48> sha384(std::span<const uint8_t> data);
     static std::array<uint8_t, 64> sha512(std::span<const uint8_t> data);
 
-    // HMAC
     static std::vector<uint8_t> hmac_sha256(
         std::span<const uint8_t> key,
         std::span<const uint8_t> data
@@ -335,7 +290,6 @@ public:
         std::span<const uint8_t> data
     );
 
-    // Streaming hash context
     class Context {
     public:
         explicit Context(const EVP_MD* algorithm);
@@ -354,13 +308,9 @@ public:
     };
 };
 
-// ============================================================================
-// Key Derivation
-// ============================================================================
 
 class KeyDerivation {
 public:
-    // HKDF (RFC 5869)
     static std::vector<uint8_t> hkdf_sha256(
         std::span<const uint8_t> input_key,
         std::span<const uint8_t> salt,
@@ -375,7 +325,6 @@ public:
         size_t output_length
     );
 
-    // PBKDF2
     static std::vector<uint8_t> pbkdf2_sha256(
         std::span<const uint8_t> password,
         std::span<const uint8_t> salt,
@@ -383,7 +332,6 @@ public:
         size_t output_length
     );
 
-    // scrypt (if available)
     static std::vector<uint8_t> scrypt(
         std::span<const uint8_t> password,
         std::span<const uint8_t> salt,
@@ -394,9 +342,6 @@ public:
     );
 };
 
-// ============================================================================
-// X.509 Certificate Handling
-// ============================================================================
 
 class Certificate {
 public:
@@ -404,24 +349,20 @@ public:
     explicit Certificate(std::span<const uint8_t> der_data);
     static Certificate from_pem(const std::string& pem_data);
 
-    // Accessors
     X509* get() const { return cert_.get(); }
     std::vector<uint8_t> to_der() const;
     std::string to_pem() const;
 
-    // Certificate information
     std::string get_subject() const;
     std::string get_issuer() const;
     std::string get_serial_number() const;
     int64_t get_not_before() const;
     int64_t get_not_after() const;
 
-    // Public key operations
     EVP_PKEY_ptr get_public_key() const;
     std::array<uint8_t, 32> get_spki_pin_sha256() const;
     std::array<uint8_t, 48> get_spki_pin_sha384() const;
 
-    // Validation
     bool verify_signature(EVP_PKEY* issuer_public_key) const;
     bool is_valid_at(int64_t timestamp) const;
     bool matches_hostname(const std::string& hostname) const;
@@ -446,9 +387,6 @@ private:
     X509_STORE_ptr store_;
 };
 
-// ============================================================================
-// SSL/TLS Context Management
-// ============================================================================
 
 class SSLContext {
 public:
@@ -459,7 +397,7 @@ public:
     void set_ca_certificates(const std::vector<Certificate>& ca_certs);
 
     void set_cipher_list(const std::string& ciphers);
-    void set_cipher_suites(const std::string& suites);  // TLS 1.3
+    void set_cipher_suites(const std::string& suites);
 
     void set_verify_mode(int mode);
     void set_verify_callback(std::function<bool(X509*, int)> callback);
@@ -471,34 +409,26 @@ private:
     std::function<bool(X509*, int)> verify_callback_;
 };
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 
 namespace utils {
 
-// Constant-time memory comparison
 bool constant_time_equals(std::span<const uint8_t> a, std::span<const uint8_t> b);
 
-// Secure memory operations
 void secure_clear(std::span<uint8_t> memory);
 void secure_clear(void* ptr, size_t size);
 
-// Base64 encoding/decoding
 std::string base64_encode(std::span<const uint8_t> data);
 std::vector<uint8_t> base64_decode(const std::string& encoded);
 
-// Hex encoding/decoding
 std::string hex_encode(std::span<const uint8_t> data);
 std::vector<uint8_t> hex_decode(const std::string& hex);
 
-// DER/PEM utilities
 bool is_der_format(std::span<const uint8_t> data);
 bool is_pem_format(const std::string& data);
 
 std::vector<uint8_t> pem_to_der(const std::string& pem);
 std::string der_to_pem(std::span<const uint8_t> der, const std::string& label);
 
-} // namespace utils
+}
 
-} // namespace ecliptix::openssl
+}
