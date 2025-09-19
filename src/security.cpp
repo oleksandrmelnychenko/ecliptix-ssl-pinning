@@ -530,8 +530,7 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_sign_ed25519(
 ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
     const uint8_t* message,
     size_t message_size,
-    const uint8_t signature[ECLIPTIX_ED25519_SIGNATURE_SIZE],
-    const uint8_t* public_key) {
+    const uint8_t signature[ECLIPTIX_ED25519_SIGNATURE_SIZE]) {
 
     if (!g_initialized.load()) {
         set_error(ECLIPTIX_ERR_NOT_INITIALIZED, "Library not initialized");
@@ -546,22 +545,13 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
     g_operations_total++;
 
     try {
-        ecliptix::openssl::EVP_PKEY_ptr pub_key;
+        // Always use embedded public key for security
+        auto public_key_pem = ecliptix::embedded::ED25519_PUBLIC_KEY_PEM;
+        ecliptix::embedded::deobfuscate_data(public_key_pem, ecliptix::embedded::ED25519_XOR_KEY);
 
-        if (public_key) {
-            // Use provided public key
-            pub_key = ecliptix::openssl::KeyGenerator::deserialize_public_key(
-                std::span<const uint8_t>(public_key, ECLIPTIX_ED25519_PUBLIC_KEY_SIZE)
-            );
-        } else {
-            // Use embedded public key
-            auto public_key_pem = ecliptix::embedded::ED25519_PUBLIC_KEY_PEM;
-            ecliptix::embedded::deobfuscate_data(public_key_pem, ecliptix::embedded::ED25519_XOR_KEY);
-
-            pub_key = ecliptix::openssl::KeyGenerator::deserialize_public_key(
-                std::span<const uint8_t>(public_key_pem.data(), public_key_pem.size())
-            );
-        }
+        auto pub_key = ecliptix::openssl::KeyGenerator::deserialize_public_key(
+            std::span<const uint8_t>(public_key_pem.data(), public_key_pem.size())
+        );
 
         std::span<const uint8_t> message_span(message, message_size);
         std::span<const uint8_t> sig_span(signature, ECLIPTIX_ED25519_SIGNATURE_SIZE);
@@ -577,6 +567,174 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
     } catch (const std::exception& e) {
         g_operations_failed++;
         return handle_exception(e, "Ed25519 verification");
+    }
+}
+
+// ============================================================================
+// RSA Encryption/Decryption (Asymmetric)
+// ============================================================================
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_rsa(
+    const uint8_t* plaintext,
+    size_t plaintext_size,
+    uint8_t* ciphertext,
+    size_t* ciphertext_size) {
+
+    if (!g_initialized.load()) {
+        set_error(ECLIPTIX_ERR_NOT_INITIALIZED, "Library not initialized");
+        return ECLIPTIX_ERR_NOT_INITIALIZED;
+    }
+
+    if (!plaintext || plaintext_size == 0 || !ciphertext || !ciphertext_size) {
+        set_error(ECLIPTIX_ERR_INVALID_PARAM, "Invalid RSA encryption parameters");
+        return ECLIPTIX_ERR_INVALID_PARAM;
+    }
+
+    // RSA can only encrypt data smaller than key size minus padding
+    constexpr size_t RSA_KEY_SIZE = 256; // 2048-bit RSA
+    constexpr size_t RSA_OAEP_PADDING = 42; // OAEP padding overhead
+    constexpr size_t MAX_PLAINTEXT_SIZE = RSA_KEY_SIZE - RSA_OAEP_PADDING;
+
+    if (plaintext_size > MAX_PLAINTEXT_SIZE) {
+        set_error(ECLIPTIX_ERR_INVALID_PARAM, "Plaintext too large for RSA encryption");
+        return ECLIPTIX_ERR_INVALID_PARAM;
+    }
+
+    if (*ciphertext_size < RSA_KEY_SIZE) {
+        set_error(ECLIPTIX_ERR_BUFFER_TOO_SMALL, "Ciphertext buffer too small");
+        return ECLIPTIX_ERR_BUFFER_TOO_SMALL;
+    }
+
+    g_operations_total++;
+
+    try {
+        // Extract RSA public key from embedded server certificate
+        auto cert_der = ecliptix::embedded::SERVER_CERT_DER;
+        ecliptix::embedded::deobfuscate_data(cert_der, ecliptix::embedded::CERT_XOR_KEY);
+
+        // Parse certificate to extract public key
+        auto cert = ecliptix::openssl::Certificate(
+            std::span<const uint8_t>(cert_der.data(), cert_der.size())
+        );
+
+        auto public_key = cert.get_public_key();
+
+        // Perform RSA-OAEP encryption using EVP high-level API
+        std::span<const uint8_t> plaintext_span(plaintext, plaintext_size);
+
+        EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(public_key.get(), nullptr);
+        if (!ctx) {
+            throw std::runtime_error("Failed to create RSA encryption context");
+        }
+
+        std::unique_ptr<EVP_PKEY_CTX, void(*)(EVP_PKEY_CTX*)> ctx_ptr(ctx, EVP_PKEY_CTX_free);
+
+        if (EVP_PKEY_encrypt_init(ctx) <= 0) {
+            throw std::runtime_error("Failed to initialize RSA encryption");
+        }
+
+        if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0) {
+            throw std::runtime_error("Failed to set RSA OAEP padding");
+        }
+
+        size_t outlen = 0;
+        if (EVP_PKEY_encrypt(ctx, nullptr, &outlen, plaintext, plaintext_size) <= 0) {
+            throw std::runtime_error("Failed to determine RSA output size");
+        }
+
+        std::vector<uint8_t> encrypted(outlen);
+        if (EVP_PKEY_encrypt(ctx, encrypted.data(), &outlen, plaintext, plaintext_size) <= 0) {
+            throw std::runtime_error("RSA encryption failed");
+        }
+
+        encrypted.resize(outlen);
+
+        if (encrypted.size() > *ciphertext_size) {
+            set_error(ECLIPTIX_ERR_BUFFER_TOO_SMALL, "Output buffer too small");
+            return ECLIPTIX_ERR_BUFFER_TOO_SMALL;
+        }
+
+        std::copy(encrypted.begin(), encrypted.end(), ciphertext);
+        *ciphertext_size = encrypted.size();
+
+        g_operations_successful++;
+        return ECLIPTIX_SUCCESS;
+
+    } catch (const std::exception& e) {
+        g_operations_failed++;
+        return handle_exception(e, "RSA encryption");
+    }
+}
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_rsa(
+    const uint8_t* ciphertext,
+    size_t ciphertext_size,
+    const uint8_t* private_key_pem,
+    size_t private_key_size,
+    uint8_t* plaintext,
+    size_t* plaintext_size) {
+
+    if (!g_initialized.load()) {
+        set_error(ECLIPTIX_ERR_NOT_INITIALIZED, "Library not initialized");
+        return ECLIPTIX_ERR_NOT_INITIALIZED;
+    }
+
+    if (!ciphertext || ciphertext_size == 0 || !private_key_pem || private_key_size == 0 ||
+        !plaintext || !plaintext_size) {
+        set_error(ECLIPTIX_ERR_INVALID_PARAM, "Invalid RSA decryption parameters");
+        return ECLIPTIX_ERR_INVALID_PARAM;
+    }
+
+    g_operations_total++;
+
+    try {
+        // Load private key from PEM
+        auto private_key = ecliptix::openssl::KeyGenerator::deserialize_private_key(
+            std::span<const uint8_t>(private_key_pem, private_key_size)
+        );
+
+        // Perform RSA-OAEP decryption using EVP high-level API
+        EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(private_key.get(), nullptr);
+        if (!ctx) {
+            throw std::runtime_error("Failed to create RSA decryption context");
+        }
+
+        std::unique_ptr<EVP_PKEY_CTX, void(*)(EVP_PKEY_CTX*)> ctx_ptr(ctx, EVP_PKEY_CTX_free);
+
+        if (EVP_PKEY_decrypt_init(ctx) <= 0) {
+            throw std::runtime_error("Failed to initialize RSA decryption");
+        }
+
+        if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0) {
+            throw std::runtime_error("Failed to set RSA OAEP padding");
+        }
+
+        size_t outlen = 0;
+        if (EVP_PKEY_decrypt(ctx, nullptr, &outlen, ciphertext, ciphertext_size) <= 0) {
+            throw std::runtime_error("Failed to determine RSA output size");
+        }
+
+        std::vector<uint8_t> decrypted(outlen);
+        if (EVP_PKEY_decrypt(ctx, decrypted.data(), &outlen, ciphertext, ciphertext_size) <= 0) {
+            throw std::runtime_error("RSA decryption failed");
+        }
+
+        decrypted.resize(outlen);
+
+        if (decrypted.size() > *plaintext_size) {
+            set_error(ECLIPTIX_ERR_BUFFER_TOO_SMALL, "Output buffer too small");
+            return ECLIPTIX_ERR_BUFFER_TOO_SMALL;
+        }
+
+        std::copy(decrypted.begin(), decrypted.end(), plaintext);
+        *plaintext_size = decrypted.size();
+
+        g_operations_successful++;
+        return ECLIPTIX_SUCCESS;
+
+    } catch (const std::exception& e) {
+        g_operations_failed++;
+        return handle_exception(e, "RSA decryption");
     }
 }
 

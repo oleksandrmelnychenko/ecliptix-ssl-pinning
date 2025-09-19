@@ -206,9 +206,32 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_sign_ed25519(
 ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
     const uint8_t* message,
     size_t message_size,
-    const uint8_t* signature,
-    const uint8_t* public_key
+    const uint8_t* signature
 );
+
+// ============================================================================
+// RSA Encryption/Decryption (Asymmetric)
+// ============================================================================
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_rsa(
+    const uint8_t* plaintext,
+    size_t plaintext_size,
+    uint8_t* ciphertext,
+    size_t* ciphertext_size
+);
+
+ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_rsa(
+    const uint8_t* ciphertext,
+    size_t ciphertext_size,
+    const uint8_t* private_key_pem,
+    size_t private_key_size,
+    uint8_t* plaintext,
+    size_t* plaintext_size
+);
+
+// ============================================================================
+// Hashing
+// ============================================================================
 
 ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_hash_blake2b(
     const uint8_t* data,
