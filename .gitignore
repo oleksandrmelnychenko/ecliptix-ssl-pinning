@@ -77,3 +77,18 @@ conanfile.txt
 *.local.*
 .env
 .env.local
+
+# Security: Private keys and sensitive files
+keys/*private*
+keys/*secret*
+keys/server_private_key.txt
+keys/*.key
+keys/*.pem
+keys/*.p12
+keys/*.pfx
+*.private
+*_private_*
+
+# Test executables in root
+test_*
+!tests/
