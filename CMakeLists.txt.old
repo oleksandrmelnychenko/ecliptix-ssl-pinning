@@ -1,0 +1,651 @@
+cmake_minimum_required(VERSION 3.20)
+project(EcliptixSecurity VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+option(ECLIPTIX_BUILD_CLIENT "Build client library for .NET desktop/mobile apps" ON)
+option(ECLIPTIX_BUILD_SERVER "Build server library for ASP.NET Core apps" ON)
+option(ECLIPTIX_BUILD_TESTS "Build unit tests (enabled by default for quality assurance)" ON)
+option(ECLIPTIX_STATIC_LIBRARY "Build static library instead of shared" OFF)
+option(ECLIPTIX_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
+option(ECLIPTIX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+option(ECLIPTIX_MAXIMUM_OBFUSCATION "Enable maximum obfuscation and hardening" OFF)
+
+find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SODIUM libsodium)
+
+find_library(SODIUM_LIBRARY
+    NAMES sodium libsodium
+    HINTS
+        ${SODIUM_LIBRARY_DIRS}
+        /opt/homebrew/lib
+        /usr/local/lib
+        /usr/lib
+    REQUIRED
+)
+
+find_path(SODIUM_INCLUDE_DIR
+    NAMES sodium.h
+    HINTS
+        ${SODIUM_INCLUDE_DIRS}
+        /opt/homebrew/include
+        /usr/local/include
+        /usr/include
+    REQUIRED
+)
+
+if(SODIUM_LIBRARY AND SODIUM_INCLUDE_DIR)
+    set(SODIUM_LIBRARIES ${SODIUM_LIBRARY})
+    set(SODIUM_INCLUDE_DIRS ${SODIUM_INCLUDE_DIR})
+    set(SODIUM_FOUND TRUE)
+    message(STATUS "Found libsodium: ${SODIUM_LIBRARY}")
+else()
+    message(FATAL_ERROR "libsodium not found. Please install: apt install libsodium-dev / brew install libsodium / pacman -S libsodium")
+endif()
+
+set(SECURITY_FLAGS
+    -fstack-protector-strong
+    -fPIE
+    -fvisibility=hidden
+    -D_FORTIFY_SOURCE=2
+    -Wformat
+    -Wformat-security
+    -Wno-deprecated-declarations
+)
+
+set(OBFUSCATION_FLAGS
+    -O3
+    -flto
+    -ffunction-sections
+    -fdata-sections
+    -fno-ident
+    -fno-asynchronous-unwind-tables
+    -fmerge-all-constants
+    -fvisibility-inlines-hidden
+    -fomit-frame-pointer
+    -finline-functions
+    -fno-common
+    -fno-keep-static-consts
+    -g0
+    -s
+)
+if(APPLE)
+    set(HARDENING_FLAGS
+        -Wl,-dead_strip
+        -Wl,-x
+        -Wl,-S
+        -Wl,-no_compact_unwind
+    )
+else()
+    set(HARDENING_FLAGS
+        -Wl,-z,relro
+        -Wl,-z,now
+        -Wl,-z,noexecstack
+        -Wl,-z,separate-code
+        -Wl,--gc-sections
+        -Wl,--strip-all
+        -Wl,--no-undefined
+        -Wl,--disable-new-dtags
+    )
+endif()
+
+set(WARNING_FLAGS
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wsign-conversion
+    -Wcast-qual
+    -Wcast-align
+    -Wshadow
+    -Wnull-dereference
+    -Wdouble-promotion
+    -Wmissing-include-dirs
+)
+if(ECLIPTIX_ENABLE_ASAN)
+    list(APPEND WARNING_FLAGS -fsanitize=address -fno-omit-frame-pointer)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+endif()
+
+if(ECLIPTIX_ENABLE_UBSAN)
+    list(APPEND WARNING_FLAGS -fsanitize=undefined)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=undefined")
+endif()
+
+if(ECLIPTIX_MAXIMUM_OBFUSCATION)
+    add_compile_options(${SECURITY_FLAGS} ${OBFUSCATION_FLAGS} ${WARNING_FLAGS})
+    add_link_options(${HARDENING_FLAGS})
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    message(STATUS "Maximum obfuscation enabled - binary will be heavily optimized and stripped")
+else()
+    add_compile_options(${SECURITY_FLAGS} ${WARNING_FLAGS})
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(NOT ECLIPTIX_MAXIMUM_OBFUSCATION)
+        add_compile_options(-O3 -flto -DNDEBUG)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+    add_compile_definitions(NDEBUG)
+
+    if(NOT ECLIPTIX_BUILD_TESTS AND NOT ECLIPTIX_MAXIMUM_OBFUSCATION)
+        message(STATUS "Release build detected - enabling tests automatically")
+        set(ECLIPTIX_BUILD_TESTS ON CACHE BOOL "Build unit tests (required for release)" FORCE)
+    endif()
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-g -O0 -DDEBUG -DECLIPTIX_DEBUG)
+endif()
+
+set(ECLIPTIX_CLIENT_SOURCES
+    src/client/client_api.cpp
+    src/cryptographic_provider.cpp
+)
+
+set(ECLIPTIX_SERVER_SOURCES
+    src/server/server_api.cpp
+    src/cryptographic_provider.cpp
+)
+
+set(ECLIPTIX_CLIENT_HEADERS
+    include/ecliptix_client.h
+    include/ecliptix_common.h
+)
+
+set(ECLIPTIX_SERVER_HEADERS
+    include/ecliptix_server.h
+    include/ecliptix_common.h
+)
+
+set(ECLIPTIX_CORE_HEADERS
+    include/ecliptix/core/types.hpp
+    include/ecliptix/core/secure_memory.hpp
+    include/ecliptix/api.hpp
+)
+
+set(ECLIPTIX_LEGACY_HEADERS
+    include/ecliptix/security.h
+    include/ecliptix/types.h
+)
+
+set(ECLIPTIX_INTERNAL_HEADERS
+    include/internal/cryptographic_provider.hpp
+    include/internal/sodium_wrapper.hpp
+)
+set(ECLIPTIX_COMMON_HEADERS
+    ${ECLIPTIX_CORE_HEADERS}
+    ${ECLIPTIX_LEGACY_HEADERS}
+    ${ECLIPTIX_INTERNAL_HEADERS}
+)
+
+
+set(CLIENT_KEYS_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client/client_keys.hpp)
+set(EMBEDDED_KEYS_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/embedded/embedded_keys.hpp)
+
+add_custom_command(
+    OUTPUT ${CLIENT_KEYS_HEADER} ${EMBEDDED_KEYS_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/keys/generated
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/keys/generate_pki.sh
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/keys/embed_keys.py
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/keys
+    COMMENT "Generating PKI keys and embedding certificates"
+    VERBATIM
+)
+
+add_custom_target(generate_keys DEPENDS ${CLIENT_KEYS_HEADER} ${EMBEDDED_KEYS_HEADER})
+
+
+if(ECLIPTIX_BUILD_CLIENT)
+    if(ECLIPTIX_STATIC_LIBRARY)
+        add_library(ecliptix_client STATIC ${ECLIPTIX_CLIENT_SOURCES} ${ECLIPTIX_CLIENT_HEADERS} ${ECLIPTIX_COMMON_HEADERS})
+        set_target_properties(ecliptix_client PROPERTIES OUTPUT_NAME ecliptix.client_static)
+    else()
+        add_library(ecliptix_client SHARED ${ECLIPTIX_CLIENT_SOURCES} ${ECLIPTIX_CLIENT_HEADERS} ${ECLIPTIX_COMMON_HEADERS})
+    endif()
+
+    target_compile_definitions(ecliptix_client PRIVATE
+        ECLIPTIX_CLIENT_BUILD
+        BUILDING_ECLIPTIX_CLIENT
+    )
+
+    target_include_directories(ecliptix_client
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client
+            ${CMAKE_CURRENT_SOURCE_DIR}/embedded
+            ${OPENSSL_INCLUDE_DIR}
+    )
+
+    target_link_libraries(ecliptix_client
+        PRIVATE
+            OpenSSL::SSL
+            OpenSSL::Crypto
+            Threads::Threads
+    )
+
+    set_target_properties(ecliptix_client PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION 1
+        PUBLIC_HEADER "${ECLIPTIX_CLIENT_HEADERS}"
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        PREFIX ""
+    )
+    if(WIN32)
+        set_target_properties(ecliptix_client PROPERTIES
+            OUTPUT_NAME "ecliptix.client"
+            SUFFIX ".dll"
+        )
+    elseif(APPLE)
+        set_target_properties(ecliptix_client PROPERTIES
+            OUTPUT_NAME "libecliptix.client"
+            SUFFIX ".dylib"
+        )
+    else()
+        set_target_properties(ecliptix_client PROPERTIES
+            OUTPUT_NAME "libecliptix.client"
+            SUFFIX ".so"
+        )
+    endif()
+
+    add_dependencies(ecliptix_client generate_keys)
+
+    message(STATUS "Client library configured for .NET desktop/mobile applications")
+endif()
+
+
+if(ECLIPTIX_BUILD_SERVER)
+    if(ECLIPTIX_STATIC_LIBRARY)
+        add_library(ecliptix_server STATIC ${ECLIPTIX_SERVER_SOURCES} ${ECLIPTIX_SERVER_HEADERS} ${ECLIPTIX_COMMON_HEADERS})
+        set_target_properties(ecliptix_server PROPERTIES OUTPUT_NAME ecliptix.server_static)
+    else()
+        add_library(ecliptix_server SHARED ${ECLIPTIX_SERVER_SOURCES} ${ECLIPTIX_SERVER_HEADERS} ${ECLIPTIX_COMMON_HEADERS})
+    endif()
+
+    target_compile_definitions(ecliptix_server PRIVATE
+        ECLIPTIX_SERVER_BUILD
+        BUILDING_ECLIPTIX_SERVER
+    )
+
+    target_include_directories(ecliptix_server
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/embedded
+            ${OPENSSL_INCLUDE_DIR}
+            ${SODIUM_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(ecliptix_server
+        PRIVATE
+            OpenSSL::SSL
+            OpenSSL::Crypto
+            Threads::Threads
+            ${SODIUM_LIBRARIES}
+    )
+
+    set_target_properties(ecliptix_server PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION 1
+        PUBLIC_HEADER "${ECLIPTIX_SERVER_HEADERS}"
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        PREFIX ""
+    )
+
+    if(WIN32)
+        set_target_properties(ecliptix_server PROPERTIES
+            OUTPUT_NAME "ecliptix.server"
+            SUFFIX ".dll"
+        )
+    elseif(APPLE)
+        set_target_properties(ecliptix_server PROPERTIES
+            OUTPUT_NAME "libecliptix.server"
+            SUFFIX ".dylib"
+        )
+    else()
+        set_target_properties(ecliptix_server PROPERTIES
+            OUTPUT_NAME "libecliptix.server"
+            SUFFIX ".so"
+        )
+    endif()
+
+    add_dependencies(ecliptix_server generate_keys)
+
+    message(STATUS "Server library configured for ASP.NET Core applications")
+endif()
+
+
+if(ECLIPTIX_MAXIMUM_OBFUSCATION)
+    if(ECLIPTIX_BUILD_CLIENT)
+        if(APPLE)
+            add_custom_command(TARGET ecliptix_client POST_BUILD
+                COMMAND ${CMAKE_STRIP} -S -x $<TARGET_FILE:ecliptix_client>
+                COMMENT "Stripping client symbols for maximum obfuscation (macOS)"
+                VERBATIM
+            )
+        else()
+            add_custom_command(TARGET ecliptix_client POST_BUILD
+                COMMAND ${CMAKE_STRIP} --strip-all --strip-debug --strip-unneeded
+                        $<TARGET_FILE:ecliptix_client>
+                COMMENT "Stripping client symbols for maximum obfuscation (Linux)"
+                VERBATIM
+            )
+        endif()
+
+        add_custom_command(TARGET ecliptix_client POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E remove -f
+                    ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ecliptix_client.dir/src/*.o
+            COMMENT "Cleaning client object files"
+            VERBATIM
+        )
+    endif()
+
+    if(ECLIPTIX_BUILD_SERVER)
+        if(APPLE)
+            add_custom_command(TARGET ecliptix_server POST_BUILD
+                COMMAND ${CMAKE_STRIP} -S -x $<TARGET_FILE:ecliptix_server>
+                COMMENT "Stripping server symbols for maximum obfuscation (macOS)"
+                VERBATIM
+            )
+        else()
+            add_custom_command(TARGET ecliptix_server POST_BUILD
+                COMMAND ${CMAKE_STRIP} --strip-all --strip-debug --strip-unneeded
+                        $<TARGET_FILE:ecliptix_server>
+                COMMENT "Stripping server symbols for maximum obfuscation (Linux)"
+                VERBATIM
+            )
+        endif()
+
+        add_custom_command(TARGET ecliptix_server POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E remove -f
+                    ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ecliptix_server.dir/src/*.o
+            COMMENT "Cleaning server object files"
+            VERBATIM
+        )
+    endif()
+endif()
+
+
+include(GenerateExportHeader)
+
+if(ECLIPTIX_BUILD_CLIENT)
+    generate_export_header(ecliptix_client
+        BASE_NAME ECLIPTIX_CLIENT
+        EXPORT_MACRO_NAME ECLIPTIX_CLIENT_API
+        EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/include/ecliptix/client_exports.h
+    )
+
+    target_include_directories(ecliptix_client PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+    )
+endif()
+
+if(ECLIPTIX_BUILD_SERVER)
+    generate_export_header(ecliptix_server
+        BASE_NAME ECLIPTIX_SERVER
+        EXPORT_MACRO_NAME ECLIPTIX_SERVER_API
+        EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/include/ecliptix/server_exports.h
+    )
+
+    target_include_directories(ecliptix_server PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+    )
+endif()
+
+
+if(ECLIPTIX_BUILD_TESTS)
+    enable_testing()
+
+    find_package(Catch2 3 QUIET)
+    if(NOT Catch2_FOUND)
+        message(STATUS "Catch2 not found, downloading...")
+        include(FetchContent)
+        FetchContent_Declare(
+            Catch2
+            GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+            GIT_TAG v3.4.0
+        )
+        FetchContent_MakeAvailable(Catch2)
+    endif()
+
+
+    set(TEST_SOURCES
+        tests/test_main.cpp
+        tests/test_types.cpp
+        tests/test_memory.cpp
+        tests/test_random.cpp
+        tests/test_encryption.cpp
+        tests/test_signatures.cpp
+        tests/test_hashing.cpp
+        tests/test_ssl.cpp
+        tests/test_api_integration.cpp
+    )
+
+    if(ECLIPTIX_BUILD_CLIENT AND ECLIPTIX_BUILD_SERVER)
+        add_executable(ecliptix_test_suite ${TEST_SOURCES})
+        target_link_libraries(ecliptix_test_suite
+            PRIVATE
+                ecliptix_client
+                ecliptix_server
+                Catch2::Catch2WithMain
+        )
+    elseif(ECLIPTIX_BUILD_CLIENT)
+        add_executable(ecliptix_client_test_suite ${TEST_SOURCES})
+        target_link_libraries(ecliptix_client_test_suite
+            PRIVATE
+                ecliptix_client
+                Catch2::Catch2WithMain
+        )
+    elseif(ECLIPTIX_BUILD_SERVER)
+        add_executable(ecliptix_server_test_suite ${TEST_SOURCES})
+        target_link_libraries(ecliptix_server_test_suite
+            PRIVATE
+                ecliptix_server
+                Catch2::Catch2WithMain
+        )
+    endif()
+    target_include_directories(ecliptix_test_suite PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/embedded
+    )
+
+    add_test(NAME EcliptixCPP_Test_Suite COMMAND ecliptix_test_suite)
+
+    add_custom_target(run_tests_before_build
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        DEPENDS ecliptix_test_suite
+        COMMENT "Running unit tests for quality assurance (manual trigger)"
+    )
+
+
+    include(CTest)
+
+    set_tests_properties(EcliptixCPP_Test_Suite PROPERTIES
+        ENVIRONMENT "DYLD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/lib"
+    )
+
+
+    add_custom_target(test_cpp
+        COMMAND ${CMAKE_CTEST_COMMAND} --verbose --tests-regex "EcliptixCPP_Test_Suite"
+        DEPENDS ecliptix_test_suite
+        COMMENT "Running C++ test suite manually"
+    )
+
+    add_custom_target(test_all
+        COMMAND ${CMAKE_CTEST_COMMAND} --verbose --output-on-failure
+        DEPENDS ecliptix_test_suite
+        COMMENT "Running complete test suite manually"
+    )
+
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_custom_target(validate_release
+            COMMAND ${CMAKE_CTEST_COMMAND} --verbose --tests-regex "c_api_test" --output-on-failure
+            DEPENDS ecliptix_security ecliptix_c_api_test
+            COMMENT "Validating release build with mandatory tests"
+        )
+
+        add_custom_target(release_build_with_tests
+            DEPENDS validate_release
+            COMMENT "Complete release build with automatic testing"
+        )
+
+        message(STATUS "Release mode: Use 'make release_build_with_tests' for full release build with testing")
+        message(STATUS "Standard build: 'make' (library only), Manual tests: 'make test_c_api'")
+    else()
+        message(STATUS "Debug mode: Unit tests enabled. Run with: make test_c_api OR make test_all")
+    endif()
+else()
+    message(STATUS "Unit tests disabled. Enable with: -DECLIPTIX_BUILD_TESTS=ON")
+endif()
+
+# Security review target (available regardless of test settings)
+add_custom_target(security_review
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/security-review.sh
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Running security analysis on the codebase"
+)
+
+
+if(ECLIPTIX_BUILD_CLIENT)
+    install(TARGETS ecliptix_client
+        EXPORT EcliptixSecurityTargets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        PUBLIC_HEADER DESTINATION include
+    )
+endif()
+
+if(ECLIPTIX_BUILD_SERVER)
+    install(TARGETS ecliptix_server
+        EXPORT EcliptixSecurityTargets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        PUBLIC_HEADER DESTINATION include
+    )
+endif()
+
+install(DIRECTORY include/ecliptix/
+    DESTINATION include/ecliptix
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/ecliptix/exports.h
+    DESTINATION include/ecliptix
+)
+
+install(EXPORT EcliptixSecurityTargets
+    FILE EcliptixSecurityTargets.cmake
+    NAMESPACE Ecliptix::
+    DESTINATION lib/cmake/EcliptixSecurity
+)
+
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EcliptixSecurityConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/EcliptixSecurityConfig.cmake
+    INSTALL_DESTINATION lib/cmake/EcliptixSecurity
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/EcliptixSecurityConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/EcliptixSecurityConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/EcliptixSecurityConfigVersion.cmake
+    DESTINATION lib/cmake/EcliptixSecurity
+)
+
+
+set(CPACK_PACKAGE_NAME "EcliptixSecurity")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "World-class cryptographic security library")
+set(CPACK_PACKAGE_VENDOR "Ecliptix")
+set(CPACK_PACKAGE_CONTACT "security@ecliptix.com")
+
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+elseif(APPLE)
+    set(CPACK_GENERATOR "ZIP;DragNDrop")
+else()
+    set(CPACK_GENERATOR "TGZ;DEB;RPM")
+endif()
+
+include(CPack)
+
+
+message(STATUS "")
+message(STATUS "======================================")
+message(STATUS "Ecliptix Security .NET Integration")
+message(STATUS "======================================")
+message(STATUS "Version: ${PROJECT_VERSION}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+if(ECLIPTIX_STATIC_LIBRARY)
+    message(STATUS "Library type: STATIC")
+else()
+    message(STATUS "Library type: SHARED")
+endif()
+
+if(ECLIPTIX_BUILD_CLIENT)
+    message(STATUS "Client library: ENABLED (Avalonia Desktop/Mobile)")
+else()
+    message(STATUS "Client library: DISABLED")
+endif()
+
+if(ECLIPTIX_BUILD_SERVER)
+    message(STATUS "Server library: ENABLED (ASP.NET Core)")
+else()
+    message(STATUS "Server library: DISABLED")
+endif()
+
+if(ECLIPTIX_BUILD_TESTS)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(STATUS "Unit tests: ENABLED (Use 'make release_build_with_tests')")
+    else()
+        message(STATUS "Unit tests: ENABLED")
+    endif()
+else()
+    message(STATUS "Unit tests: DISABLED")
+endif()
+message(STATUS "OpenSSL: ${OPENSSL_VERSION}")
+if(SODIUM_FOUND)
+    message(STATUS "libsodium: FOUND (Server library only)")
+else()
+    message(STATUS "libsodium: NOT FOUND (Required for server library)")
+endif()
+message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "======================================")
+message(STATUS "Build Commands:")
+if(ECLIPTIX_BUILD_CLIENT)
+    message(STATUS "  Client only: cmake .. -DECLIPTIX_BUILD_SERVER=OFF")
+endif()
+if(ECLIPTIX_BUILD_SERVER)
+    message(STATUS "  Server only: cmake .. -DECLIPTIX_BUILD_CLIENT=OFF")
+endif()
+message(STATUS "  Both: cmake .. (default)")
+message(STATUS "======================================")
+message(STATUS "")
