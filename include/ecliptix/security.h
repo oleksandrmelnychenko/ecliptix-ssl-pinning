@@ -40,21 +40,21 @@ typedef enum {
 #define ECLIPTIX_RSA_CIPHERTEXT_SIZE 256
 
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_init(void);
+[[nodiscard]] ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_init(void);
 
 ECLIPTIX_API void ECLIPTIX_CALL ecliptix_cleanup(void);
 
-ECLIPTIX_API const char* ECLIPTIX_CALL ecliptix_get_error_message(void);
+[[nodiscard]] ECLIPTIX_API const char* ECLIPTIX_CALL ecliptix_get_error_message(void);
 
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_rsa(
+[[nodiscard]] ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_encrypt_rsa(
     const uint8_t* plaintext,
     size_t plaintext_size,
     uint8_t* ciphertext,
     size_t* ciphertext_size
 );
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_rsa(
+[[nodiscard]] ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_rsa(
     const uint8_t* ciphertext,
     size_t ciphertext_size,
     const uint8_t* private_key_pem,
@@ -64,7 +64,7 @@ ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_decrypt_rsa(
 );
 
 
-ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
+[[nodiscard]] ECLIPTIX_API ecliptix_result_t ECLIPTIX_CALL ecliptix_verify_ed25519(
     const uint8_t* message,
     size_t message_size,
     const uint8_t* signature
