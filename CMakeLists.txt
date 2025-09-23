@@ -484,6 +484,7 @@ if(ECLIPTIX_BUILD_TESTS)
         tests/test_hashing.cpp
         tests/test_ssl.cpp
         tests/test_api_integration.cpp
+        tests/test_security.cpp
     )
 
     # Build comprehensive C++ test suite
@@ -494,6 +495,9 @@ if(ECLIPTIX_BUILD_TESTS)
                 ecliptix_client
                 ecliptix_server
                 Catch2::Catch2WithMain
+                OpenSSL::SSL
+                OpenSSL::Crypto
+                ${SODIUM_LIBRARIES}
         )
     elseif(ECLIPTIX_BUILD_CLIENT)
         add_executable(ecliptix_client_test_suite ${TEST_SOURCES})
@@ -511,8 +515,8 @@ if(ECLIPTIX_BUILD_TESTS)
         )
     endif()
     target_include_directories(ecliptix_test_suite PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/embedded
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        ${SODIUM_INCLUDE_DIRS}
     )
 
     # Add tests to CTest

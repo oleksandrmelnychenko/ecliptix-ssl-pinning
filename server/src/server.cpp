@@ -106,6 +106,42 @@ int ecliptix_server_init_with_key(const uint8_t* private_key_pem, size_t key_siz
     return ECLIPTIX_SUCCESS;
 }
 
+int ecliptix_server_init_with_keys(const uint8_t* server_private_pem, size_t server_key_size,
+                                   const uint8_t* client_public_pem, size_t client_pub_size) {
+    if (!server_private_pem || server_key_size == 0 || !client_public_pem || client_pub_size == 0) {
+        set_error("Invalid key parameters");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
+    }
+
+    if (g_server_private_key || g_client_public_key) {
+        set_error("Server already initialized");
+        return ECLIPTIX_SUCCESS;
+    }
+
+    g_server_private_key = load_server_private_key_from_pem(server_private_pem, server_key_size);
+
+    BIO* bio = BIO_new_mem_buf(client_public_pem, static_cast<int>(client_pub_size));
+    if (bio) {
+        g_client_public_key = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+        BIO_free(bio);
+    }
+
+    if (!g_server_private_key) {
+        set_error("Failed to load provided server private key");
+        return ECLIPTIX_ERROR_INIT_FAILED;
+    }
+
+    if (!g_client_public_key) {
+        set_error("Failed to load provided client public key");
+        EVP_PKEY_free(g_server_private_key);
+        g_server_private_key = nullptr;
+        return ECLIPTIX_ERROR_INIT_FAILED;
+    }
+
+    set_error(nullptr);
+    return ECLIPTIX_SUCCESS;
+}
+
 void ecliptix_server_cleanup(void) {
     if (g_server_private_key) {
         EVP_PKEY_free(g_server_private_key);
@@ -123,14 +159,25 @@ ecliptix_result_t ecliptix_server_encrypt(
     uint8_t* ciphertext,
     size_t* cipher_len
 ) {
-    if (!plaintext || !ciphertext || !cipher_len) {
+    if (!ciphertext || !cipher_len) {
         set_error("Invalid parameters");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
+    }
+
+    if (!plaintext && plain_len > 0) {
+        set_error("Invalid parameters: non-null data required when plain_len > 0");
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 
     if (!g_client_public_key) {
         set_error("Not initialized");
         return ECLIPTIX_ERROR_INIT_FAILED;
+    }
+
+    int key_size = EVP_PKEY_size(g_client_public_key);
+    if (key_size <= 0 || *cipher_len < static_cast<size_t>(key_size)) {
+        set_error("Buffer too small for encryption output");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_client_public_key, nullptr);
@@ -203,8 +250,13 @@ ecliptix_result_t ecliptix_server_sign(
     uint8_t* signature,
     size_t* sig_len
 ) {
-    if (!data || !signature || !sig_len) {
+    if (!signature || !sig_len) {
         set_error("Invalid parameters");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
+    }
+
+    if (!data && data_len > 0) {
+        set_error("Invalid parameters: non-null data required when data_len > 0");
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 

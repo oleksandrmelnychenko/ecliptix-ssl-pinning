@@ -100,8 +100,13 @@ ecliptix_result_t ecliptix_client_verify(
     const uint8_t* signature,
     size_t sig_len
 ) {
-    if (!data || !signature) {
+    if (!signature) {
         set_error("Invalid parameters");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
+    }
+
+    if (!data && data_len > 0) {
+        set_error("Invalid parameters: non-null data required when data_len > 0");
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 

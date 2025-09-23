@@ -33,6 +33,13 @@ ECLIPTIX_SERVER_API int ecliptix_server_init(void);
 
 ECLIPTIX_SERVER_API int ecliptix_server_init_with_key(const uint8_t* private_key_pem, size_t key_size);
 
+ECLIPTIX_SERVER_API int ecliptix_server_init_with_keys(
+    const uint8_t* server_private_pem,
+    size_t server_key_size,
+    const uint8_t* client_public_pem,
+    size_t client_pub_size
+);
+
 ECLIPTIX_SERVER_API void ecliptix_server_cleanup(void);
 
 ECLIPTIX_SERVER_API ecliptix_result_t ecliptix_server_encrypt(
