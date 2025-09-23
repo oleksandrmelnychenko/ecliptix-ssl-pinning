@@ -186,73 +186,31 @@ endif()
 
 # Client implementation sources (secure client operations only)
 set(ECLIPTIX_CLIENT_SOURCES
-    src/client/client_api.cpp
-    src/cryptographic_provider.cpp
+    client/src/client.cpp
 )
 
 # Server implementation sources (full server operations)
 set(ECLIPTIX_SERVER_SOURCES
-    src/server/server_api.cpp
-    src/cryptographic_provider.cpp
+    server/src/server.cpp
 )
 
 # Client API Headers
 set(ECLIPTIX_CLIENT_HEADERS
-    include/ecliptix_client.h
-    include/ecliptix_common.h
+    client/include/ecliptix_client.h
 )
 
 # Server API Headers
 set(ECLIPTIX_SERVER_HEADERS
-    include/ecliptix_server.h
-    include/ecliptix_common.h
-)
-
-# Core C++ API Headers
-set(ECLIPTIX_CORE_HEADERS
-    include/ecliptix/core/types.hpp
-    include/ecliptix/core/secure_memory.hpp
-    include/ecliptix/api.hpp
-)
-
-# Legacy C API Headers (for compatibility)
-set(ECLIPTIX_LEGACY_HEADERS
-    include/ecliptix/security.h
-    include/ecliptix/types.h
-)
-
-# Internal Implementation Headers
-set(ECLIPTIX_INTERNAL_HEADERS
-    include/internal/cryptographic_provider.hpp
-    include/internal/sodium_wrapper.hpp
+    server/include/ecliptix_server.h
 )
 
 # Common headers for both client and server
 set(ECLIPTIX_COMMON_HEADERS
-    ${ECLIPTIX_CORE_HEADERS}
-    ${ECLIPTIX_LEGACY_HEADERS}
-    ${ECLIPTIX_INTERNAL_HEADERS}
 )
 
 # ============================================================================
-# Embedded Keys Generation
+# Embedded Keys Generation - Disabled for now
 # ============================================================================
-
-set(CLIENT_KEYS_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client/client_keys.hpp)
-set(EMBEDDED_KEYS_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/embedded/embedded_keys.hpp)
-
-add_custom_command(
-    OUTPUT ${CLIENT_KEYS_HEADER} ${EMBEDDED_KEYS_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/keys/generated
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/keys/generate_pki.sh
-    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/keys/embed_keys.py
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/keys
-    COMMENT "Generating PKI keys and embedding certificates"
-    VERBATIM
-)
-
-add_custom_target(generate_keys DEPENDS ${CLIENT_KEYS_HEADER} ${EMBEDDED_KEYS_HEADER})
 
 # ============================================================================
 # Client Library Target (.NET Desktop/Mobile)
@@ -275,10 +233,10 @@ if(ECLIPTIX_BUILD_CLIENT)
     # Include directories for client
     target_include_directories(ecliptix_client
         PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/client/include>
             $<INSTALL_INTERFACE:include>
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/embedded/client
+            ${CMAKE_CURRENT_SOURCE_DIR}/client/embedded
             ${CMAKE_CURRENT_SOURCE_DIR}/embedded
             ${OPENSSL_INCLUDE_DIR}
     )
@@ -319,8 +277,6 @@ if(ECLIPTIX_BUILD_CLIENT)
         )
     endif()
 
-    # Add dependency on key generation
-    add_dependencies(ecliptix_client generate_keys)
 
     message(STATUS "Client library configured for .NET desktop/mobile applications")
 endif()
@@ -346,9 +302,10 @@ if(ECLIPTIX_BUILD_SERVER)
     # Include directories for server
     target_include_directories(ecliptix_server
         PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/server/include>
             $<INSTALL_INTERFACE:include>
         PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/server/embedded
             ${CMAKE_CURRENT_SOURCE_DIR}/embedded
             ${OPENSSL_INCLUDE_DIR}
             ${SODIUM_INCLUDE_DIRS}
@@ -391,8 +348,6 @@ if(ECLIPTIX_BUILD_SERVER)
         )
     endif()
 
-    # Add dependency on key generation
-    add_dependencies(ecliptix_server generate_keys)
 
     message(STATUS "Server library configured for ASP.NET Core applications")
 endif()

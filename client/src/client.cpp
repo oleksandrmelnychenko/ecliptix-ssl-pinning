@@ -1,6 +1,8 @@
 #include "ecliptix_client.h"
+#include "../embedded/keys.h"
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include <cstring>
 
 #ifdef _WIN32
@@ -9,44 +11,36 @@
 #define ECLIPTIX_API __attribute__((visibility("default")))
 #endif
 
-static const unsigned char SERVER_PUBLIC_KEY_PEM[] = {
-    0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x42, 0x45, 0x47, 0x49, 0x4e, 0x20, 0x50, 0x55, 0x42, 0x4c, 0x49, 0x43, 0x20, 0x4b,
-    0x45, 0x59, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x0a, 0x4d, 0x49, 0x49, 0x42, 0x49, 0x6a, 0x41, 0x4e, 0x42, 0x67, 0x6b,
-    0x71, 0x68, 0x6b, 0x69, 0x47, 0x39, 0x77, 0x30, 0x42, 0x41, 0x51, 0x45, 0x46, 0x41, 0x41, 0x4f, 0x43, 0x41, 0x51,
-    0x38, 0x41, 0x4d, 0x49, 0x49, 0x42, 0x43, 0x67, 0x4b, 0x43, 0x41, 0x51, 0x45, 0x41, 0x34, 0x69, 0x59, 0x6a, 0x54,
-    0x6c, 0x52, 0x63, 0x7a, 0x6a, 0x4a, 0x46, 0x74, 0x45, 0x56, 0x39, 0x38, 0x35, 0x4e, 0x6a, 0x0a, 0x65, 0x38, 0x31,
-    0x30, 0x39, 0x31, 0x4f, 0x56, 0x41, 0x66, 0x37, 0x2b, 0x32, 0x69, 0x58, 0x4c, 0x49, 0x37, 0x6f, 0x52, 0x4b, 0x6e,
-    0x79, 0x62, 0x74, 0x6a, 0x6f, 0x46, 0x39, 0x43, 0x42, 0x76, 0x4c, 0x38, 0x4f, 0x4f, 0x32, 0x56, 0x36, 0x52, 0x79,
-    0x6c, 0x77, 0x62, 0x33, 0x71, 0x44, 0x66, 0x32, 0x4e, 0x43, 0x49, 0x4a, 0x31, 0x53, 0x58, 0x37, 0x49, 0x55, 0x50,
-    0x6a, 0x4c, 0x41, 0x76, 0x0a, 0x6e, 0x67, 0x49, 0x42, 0x61, 0x39, 0x58, 0x62, 0x36, 0x51, 0x2b, 0x6d, 0x71, 0x71,
-    0x7a, 0x4f, 0x79, 0x74, 0x2f, 0x57, 0x35, 0x4b, 0x71, 0x6c, 0x65, 0x62, 0x4a, 0x66, 0x71, 0x73, 0x4a, 0x42, 0x64,
-    0x41, 0x67, 0x30, 0x74, 0x61, 0x32, 0x4e, 0x58, 0x68, 0x46, 0x30, 0x75, 0x30, 0x31, 0x47, 0x56, 0x45, 0x70, 0x31,
-    0x74, 0x52, 0x70, 0x57, 0x70, 0x4b, 0x71, 0x58, 0x2f, 0x57, 0x6e, 0x67, 0x0a, 0x73, 0x78, 0x78, 0x46, 0x71, 0x33,
-    0x55, 0x75, 0x33, 0x54, 0x4e, 0x37, 0x4e, 0x56, 0x47, 0x6c, 0x51, 0x65, 0x61, 0x57, 0x68, 0x65, 0x33, 0x77, 0x4b,
-    0x4a, 0x4d, 0x6e, 0x2f, 0x53, 0x41, 0x63, 0x37, 0x4f, 0x32, 0x61, 0x7a, 0x39, 0x5a, 0x36, 0x4a, 0x49, 0x6a, 0x51,
-    0x70, 0x35, 0x76, 0x43, 0x37, 0x51, 0x4d, 0x72, 0x49, 0x69, 0x78, 0x70, 0x44, 0x37, 0x46, 0x53, 0x4a, 0x6d, 0x4c,
-    0x5a, 0x0a, 0x4e, 0x6c, 0x5a, 0x56, 0x4c, 0x47, 0x31, 0x36, 0x47, 0x6c, 0x55, 0x4f, 0x71, 0x54, 0x6c, 0x50, 0x6c,
-    0x71, 0x65, 0x63, 0x4a, 0x53, 0x66, 0x6f, 0x2f, 0x37, 0x4f, 0x35, 0x42, 0x75, 0x63, 0x59, 0x58, 0x6d, 0x67, 0x6c,
-    0x55, 0x79, 0x4b, 0x34, 0x75, 0x69, 0x37, 0x74, 0x54, 0x6d, 0x31, 0x74, 0x68, 0x63, 0x62, 0x33, 0x31, 0x42, 0x2f,
-    0x74, 0x37, 0x30, 0x54, 0x53, 0x7a, 0x67, 0x33, 0x63, 0x0a, 0x73, 0x31, 0x33, 0x4c, 0x73, 0x35, 0x53, 0x64, 0x58,
-    0x73, 0x6c, 0x71, 0x76, 0x64, 0x36, 0x52, 0x47, 0x41, 0x4b, 0x6f, 0x2b, 0x35, 0x2f, 0x72, 0x4b, 0x59, 0x68, 0x75,
-    0x69, 0x4b, 0x5a, 0x4b, 0x51, 0x4b, 0x37, 0x6b, 0x6a, 0x53, 0x71, 0x54, 0x74, 0x72, 0x62, 0x74, 0x43, 0x6c, 0x4c,
-    0x42, 0x62, 0x41, 0x43, 0x77, 0x43, 0x55, 0x4f, 0x59, 0x41, 0x32, 0x6a, 0x64, 0x64, 0x69, 0x4f, 0x73, 0x0a, 0x6a,
-    0x51, 0x49, 0x44, 0x41, 0x51, 0x41, 0x42, 0x0a, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x45, 0x4e, 0x44, 0x20, 0x50, 0x55,
-    0x42, 0x4c, 0x49, 0x43, 0x20, 0x4b, 0x45, 0x59, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x0a
-};
-static const size_t SERVER_PUBLIC_KEY_PEM_size = 451;
-#define SERVER_PUBLIC_KEY_SIZE SERVER_PUBLIC_KEY_PEM_size
 
 static const char* g_last_error = nullptr;
 static EVP_PKEY* g_server_public_key = nullptr;
+static EVP_PKEY* g_client_private_key = nullptr;
+static EVP_PKEY* g_client_public_key = nullptr;
 
 static void set_error(const char* error) {
     g_last_error = error;
 }
 
 static EVP_PKEY* load_server_public_key() {
-    BIO* bio = BIO_new_mem_buf(SERVER_PUBLIC_KEY_PEM, SERVER_PUBLIC_KEY_SIZE);
+    BIO* bio = BIO_new_mem_buf(SERVER_PUBLIC_KEY_PEM, SERVER_PUBLIC_KEY_PEM_size);
+    if (!bio) return nullptr;
+
+    EVP_PKEY* key = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    return key;
+}
+
+static EVP_PKEY* load_client_private_key() {
+    BIO* bio = BIO_new_mem_buf(CLIENT_PRIVATE_KEY_PEM, CLIENT_PRIVATE_KEY_PEM_size);
+    if (!bio) return nullptr;
+
+    EVP_PKEY* key = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    return key;
+}
+
+static EVP_PKEY* load_client_public_key() {
+    BIO* bio = BIO_new_mem_buf(CLIENT_PUBLIC_KEY_PEM, CLIENT_PUBLIC_KEY_PEM_size);
     if (!bio) return nullptr;
 
     EVP_PKEY* key = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
@@ -55,13 +49,30 @@ static EVP_PKEY* load_server_public_key() {
 }
 
 int ecliptix_client_init(void) {
-    if (g_server_public_key) return ECLIPTIX_SUCCESS;
-
-    g_server_public_key = load_server_public_key();
+    if (g_server_public_key && g_client_private_key && g_client_public_key) return ECLIPTIX_SUCCESS;
 
     if (!g_server_public_key) {
-        set_error("Failed to load server public key");
-        return ECLIPTIX_ERROR_INIT_FAILED;
+        g_server_public_key = load_server_public_key();
+        if (!g_server_public_key) {
+            set_error("Failed to load server public key");
+            return ECLIPTIX_ERROR_INIT_FAILED;
+        }
+    }
+
+    if (!g_client_private_key) {
+        g_client_private_key = load_client_private_key();
+        if (!g_client_private_key) {
+            set_error("Failed to load client private key");
+            return ECLIPTIX_ERROR_INIT_FAILED;
+        }
+    }
+
+    if (!g_client_public_key) {
+        g_client_public_key = load_client_public_key();
+        if (!g_client_public_key) {
+            set_error("Failed to load client public key");
+            return ECLIPTIX_ERROR_INIT_FAILED;
+        }
     }
 
     set_error(nullptr);
@@ -72,6 +83,14 @@ void ecliptix_client_cleanup(void) {
     if (g_server_public_key) {
         EVP_PKEY_free(g_server_public_key);
         g_server_public_key = nullptr;
+    }
+    if (g_client_private_key) {
+        EVP_PKEY_free(g_client_private_key);
+        g_client_private_key = nullptr;
+    }
+    if (g_client_public_key) {
+        EVP_PKEY_free(g_client_public_key);
+        g_client_public_key = nullptr;
     }
 }
 
@@ -125,12 +144,12 @@ ecliptix_result_t ecliptix_client_encrypt(
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 
-    if (!g_server_public_key) {
+    if (!g_client_public_key) {
         set_error("Not initialized");
         return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_server_public_key, nullptr);
+    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_client_public_key, nullptr);
     if (!ctx) {
         set_error("Failed to create encryption context");
         return ECLIPTIX_ERROR_CRYPTO_FAILURE;
@@ -138,11 +157,15 @@ ecliptix_result_t ecliptix_client_encrypt(
 
     ecliptix_result_t result = ECLIPTIX_ERROR_CRYPTO_FAILURE;
     if (EVP_PKEY_encrypt_init(ctx) == 1) {
-        if (EVP_PKEY_encrypt(ctx, ciphertext, ciphertext_len, plaintext, plaintext_len) == 1) {
-            result = ECLIPTIX_SUCCESS;
-            set_error(nullptr);
+        if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) == 1) {
+            if (EVP_PKEY_encrypt(ctx, ciphertext, ciphertext_len, plaintext, plaintext_len) == 1) {
+                result = ECLIPTIX_SUCCESS;
+                set_error(nullptr);
+            } else {
+                set_error("Encryption failed");
+            }
         } else {
-            set_error("Encryption failed");
+            set_error("Failed to set RSA padding");
         }
     } else {
         set_error("Failed to initialize encryption");
@@ -158,8 +181,40 @@ ecliptix_result_t ecliptix_client_decrypt(
     uint8_t* plaintext,
     size_t* plaintext_len
 ) {
-    set_error("Client cannot decrypt - no private key");
-    return ECLIPTIX_ERROR_INVALID_PARAMS;
+    if (!ciphertext || !plaintext || !plaintext_len) {
+        set_error("Invalid parameters");
+        return ECLIPTIX_ERROR_INVALID_PARAMS;
+    }
+
+    if (!g_client_private_key) {
+        set_error("Not initialized");
+        return ECLIPTIX_ERROR_INIT_FAILED;
+    }
+
+    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_client_private_key, nullptr);
+    if (!ctx) {
+        set_error("Failed to create decryption context");
+        return ECLIPTIX_ERROR_CRYPTO_FAILURE;
+    }
+
+    ecliptix_result_t result = ECLIPTIX_ERROR_CRYPTO_FAILURE;
+    if (EVP_PKEY_decrypt_init(ctx) == 1) {
+        if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) == 1) {
+            if (EVP_PKEY_decrypt(ctx, plaintext, plaintext_len, ciphertext, ciphertext_len) == 1) {
+                result = ECLIPTIX_SUCCESS;
+                set_error(nullptr);
+            } else {
+                set_error("Decryption failed");
+            }
+        } else {
+            set_error("Failed to set RSA padding");
+        }
+    } else {
+        set_error("Failed to initialize decryption");
+    }
+
+    EVP_PKEY_CTX_free(ctx);
+    return result;
 }
 
 ecliptix_result_t ecliptix_client_get_public_key(
@@ -171,13 +226,13 @@ ecliptix_result_t ecliptix_client_get_public_key(
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 
-    if (!g_server_public_key) {
+    if (!g_client_public_key) {
         set_error("Not initialized");
         return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
     unsigned char* der_buf = nullptr;
-    int der_len = i2d_PUBKEY(g_server_public_key, &der_buf);
+    int der_len = i2d_PUBKEY(g_client_public_key, &der_buf);
 
     if (der_len <= 0 || !der_buf) {
         set_error("Failed to encode public key");
