@@ -5,15 +5,6 @@ echo "=========================================="
 echo "Building Ecliptix Server Library"
 echo "=========================================="
 
-# Generate keys for testing/examples if they don't exist (NOT embedded for security)
-if [ ! -f "keys/rsa_private.pem" ] || [ ! -f "keys/rsa_public.pem" ]; then
-    echo "Generating RSA keys for testing/examples..."
-    echo "Note: Private keys are NOT embedded and must be loaded externally"
-    cd keys
-    ./generate_keys.sh
-    cd ..
-fi
-
 # Build server library
 echo "Building server library..."
 cd server

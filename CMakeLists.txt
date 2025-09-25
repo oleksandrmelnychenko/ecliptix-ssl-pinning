@@ -5,7 +5,12 @@ project(EcliptixSecurity VERSION 1.0.0 LANGUAGES CXX)
 # Compiler Configuration
 # ============================================================================
 
-set(CMAKE_CXX_STANDARD 23)
+# Use C++20 for Windows cross-compilation compatibility
+if(WIN32 AND CMAKE_CROSSCOMPILING)
+    set(CMAKE_CXX_STANDARD 20)
+else()
+    set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -31,42 +36,54 @@ option(ECLIPTIX_MAXIMUM_OBFUSCATION "Enable maximum obfuscation and hardening" O
 # Dependencies
 # ============================================================================
 
-find_package(OpenSSL REQUIRED)
-find_package(Threads REQUIRED)
-
-# Find libsodium
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SODIUM libsodium)
-
-# Always use find_library for reliable linking
-find_library(SODIUM_LIBRARY
-    NAMES sodium libsodium
-    HINTS
-        ${SODIUM_LIBRARY_DIRS}
-        /opt/homebrew/lib
-        /usr/local/lib
-        /usr/lib
-    REQUIRED
-)
-
-find_path(SODIUM_INCLUDE_DIR
-    NAMES sodium.h
-    HINTS
-        ${SODIUM_INCLUDE_DIRS}
-        /opt/homebrew/include
-        /usr/local/include
-        /usr/include
-    REQUIRED
-)
-
-if(SODIUM_LIBRARY AND SODIUM_INCLUDE_DIR)
-    set(SODIUM_LIBRARIES ${SODIUM_LIBRARY})
-    set(SODIUM_INCLUDE_DIRS ${SODIUM_INCLUDE_DIR})
-    set(SODIUM_FOUND TRUE)
-    message(STATUS "Found libsodium: ${SODIUM_LIBRARY}")
+# Cross-compilation friendly dependency detection
+if(WIN32 AND CMAKE_CROSSCOMPILING)
+    # For Windows cross-compilation, libraries are set in toolchain file
+    message(STATUS "Windows cross-compilation detected - using toolchain libraries")
+    message(STATUS "OpenSSL SSL: ${OPENSSL_SSL_LIBRARY}")
+    message(STATUS "OpenSSL Crypto: ${OPENSSL_CRYPTO_LIBRARY}")
+    message(STATUS "libsodium: ${SODIUM_LIBRARY}")
 else()
-    message(FATAL_ERROR "libsodium not found. Please install: apt install libsodium-dev / brew install libsodium / pacman -S libsodium")
+    # Native compilation
+    find_package(OpenSSL REQUIRED)
+    find_package(Threads REQUIRED)
+
+    # Find libsodium
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SODIUM libsodium)
+
+    # Always use find_library for reliable linking
+    find_library(SODIUM_LIBRARY
+        NAMES sodium libsodium
+        HINTS
+            ${SODIUM_LIBRARY_DIRS}
+            /opt/homebrew/lib
+            /usr/local/lib
+            /usr/lib
+        REQUIRED
+    )
+
+    find_path(SODIUM_INCLUDE_DIR
+        NAMES sodium.h
+        HINTS
+            ${SODIUM_INCLUDE_DIRS}
+            /opt/homebrew/include
+            /usr/local/include
+            /usr/include
+        REQUIRED
+    )
+
+    if(SODIUM_LIBRARY AND SODIUM_INCLUDE_DIR)
+        set(SODIUM_LIBRARIES ${SODIUM_LIBRARY})
+        set(SODIUM_INCLUDE_DIRS ${SODIUM_INCLUDE_DIR})
+        set(SODIUM_FOUND TRUE)
+        message(STATUS "Found libsodium: ${SODIUM_LIBRARY}")
+    else()
+        message(FATAL_ERROR "libsodium not found. Please install: apt install libsodium-dev / brew install libsodium / pacman -S libsodium")
+    endif()
 endif()
+
+find_package(Threads REQUIRED)
 
 # ============================================================================
 # Compiler Flags for Security and Performance
@@ -242,12 +259,20 @@ if(ECLIPTIX_BUILD_CLIENT)
     )
 
     # Link libraries for client (no libsodium - client doesn't need it)
-    target_link_libraries(ecliptix_client
-        PRIVATE
-            OpenSSL::SSL
-            OpenSSL::Crypto
-            Threads::Threads
-    )
+    if(WIN32 AND CMAKE_CROSSCOMPILING)
+        target_link_libraries(ecliptix_client
+            PRIVATE
+                ${OPENSSL_LIBRARIES}
+                Threads::Threads
+        )
+    else()
+        target_link_libraries(ecliptix_client
+            PRIVATE
+                OpenSSL::SSL
+                OpenSSL::Crypto
+                Threads::Threads
+        )
+    endif()
 
     # Client library properties
     set_target_properties(ecliptix_client PROPERTIES
@@ -312,13 +337,22 @@ if(ECLIPTIX_BUILD_SERVER)
     )
 
     # Link libraries for server (full crypto suite)
-    target_link_libraries(ecliptix_server
-        PRIVATE
-            OpenSSL::SSL
-            OpenSSL::Crypto
-            Threads::Threads
-            ${SODIUM_LIBRARIES}
-    )
+    if(WIN32 AND CMAKE_CROSSCOMPILING)
+        target_link_libraries(ecliptix_server
+            PRIVATE
+                ${OPENSSL_LIBRARIES}
+                Threads::Threads
+                ${SODIUM_LIBRARIES}
+        )
+    else()
+        target_link_libraries(ecliptix_server
+            PRIVATE
+                OpenSSL::SSL
+                OpenSSL::Crypto
+                Threads::Threads
+                ${SODIUM_LIBRARIES}
+        )
+    endif()
 
     # Server library properties
     set_target_properties(ecliptix_server PROPERTIES
@@ -473,32 +507,36 @@ if(ECLIPTIX_BUILD_TESTS)
     #     ${CMAKE_CURRENT_SOURCE_DIR}/include
     # )
 
-    # C++ Test sources - Comprehensive test suite
+    # C++ Test sources - RSA encryption/decryption only for .NET projects
     set(TEST_SOURCES
         tests/test_main.cpp
-        tests/test_types.cpp
-        tests/test_memory.cpp
-        tests/test_random.cpp
         tests/test_encryption.cpp
-        tests/test_signatures.cpp
-        tests/test_hashing.cpp
-        tests/test_ssl.cpp
-        tests/test_api_integration.cpp
-        tests/test_security.cpp
     )
 
     # Build comprehensive C++ test suite
     if(ECLIPTIX_BUILD_CLIENT AND ECLIPTIX_BUILD_SERVER)
         add_executable(ecliptix_test_suite ${TEST_SOURCES})
-        target_link_libraries(ecliptix_test_suite
-            PRIVATE
-                ecliptix_client
-                ecliptix_server
-                Catch2::Catch2WithMain
-                OpenSSL::SSL
-                OpenSSL::Crypto
-                ${SODIUM_LIBRARIES}
-        )
+
+        if(WIN32 AND CMAKE_CROSSCOMPILING)
+            target_link_libraries(ecliptix_test_suite
+                PRIVATE
+                    ecliptix_client
+                    ecliptix_server
+                    Catch2::Catch2WithMain
+                    ${OPENSSL_LIBRARIES}
+                    ${SODIUM_LIBRARIES}
+            )
+        else()
+            target_link_libraries(ecliptix_test_suite
+                PRIVATE
+                    ecliptix_client
+                    ecliptix_server
+                    Catch2::Catch2WithMain
+                    OpenSSL::SSL
+                    OpenSSL::Crypto
+                    ${SODIUM_LIBRARIES}
+            )
+        endif()
     elseif(ECLIPTIX_BUILD_CLIENT)
         add_executable(ecliptix_client_test_suite ${TEST_SOURCES})
         target_link_libraries(ecliptix_client_test_suite

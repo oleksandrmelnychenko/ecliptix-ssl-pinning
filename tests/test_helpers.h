@@ -53,48 +53,15 @@ namespace TestHelpers {
         return buffer;
     }
 
-    inline std::vector<uint8_t> load_server_private_key() {
-        return load_file("../../keys/server_private.pem");
-    }
-
-    inline std::vector<uint8_t> load_client_private_key() {
-        return load_file("../../keys/client_private.pem");
-    }
-
-    inline std::vector<uint8_t> load_server_public_key() {
-        return load_file("../../keys/server_public.pem");
-    }
-
-    inline std::vector<uint8_t> load_client_public_key() {
-        return load_file("../../keys/client_public.pem");
-    }
-
+    // Use embedded keys instead of loading from files
     inline int init_server_with_test_key() {
-        auto server_key = load_server_private_key();
-        if (server_key.empty()) {
-            std::cerr << "Failed to load server private key for testing" << std::endl;
-            return ECLIPTIX_ERROR_INIT_FAILED;
-        }
-
-        return ecliptix_server_init_with_key(server_key.data(), server_key.size());
+        // Use the embedded keys compiled into the library
+        return ecliptix_server_init();
     }
 
     inline int init_server_with_matching_keys() {
-        auto server_private = load_server_private_key();
-        auto client_public = load_client_public_key();
-
-        if (server_private.empty()) {
-            std::cerr << "Failed to load server private key for testing" << std::endl;
-            return ECLIPTIX_ERROR_INIT_FAILED;
-        }
-
-        if (client_public.empty()) {
-            std::cerr << "Failed to load client public key for testing" << std::endl;
-            return ECLIPTIX_ERROR_INIT_FAILED;
-        }
-
-        return ecliptix_server_init_with_keys(server_private.data(), server_private.size(),
-                                            client_public.data(), client_public.size());
+        // Use the embedded keys compiled into the library
+        return ecliptix_server_init();
     }
 
     inline int init_client_for_testing() {

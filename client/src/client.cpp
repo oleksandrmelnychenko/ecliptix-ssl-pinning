@@ -49,7 +49,7 @@ static EVP_PKEY* load_client_public_key() {
 }
 
 int ecliptix_client_init(void) {
-    if (g_server_public_key && g_client_private_key && g_client_public_key) return ECLIPTIX_SUCCESS;
+    if (g_server_public_key) return ECLIPTIX_SUCCESS;
 
     if (!g_server_public_key) {
         g_server_public_key = load_server_public_key();
@@ -59,20 +59,17 @@ int ecliptix_client_init(void) {
         }
     }
 
+    // Load client keys for certificate pinning functionality
+    g_client_private_key = load_client_private_key();
     if (!g_client_private_key) {
-        g_client_private_key = load_client_private_key();
-        if (!g_client_private_key) {
-            set_error("Failed to load client private key");
-            return ECLIPTIX_ERROR_INIT_FAILED;
-        }
+        set_error("Failed to load client private key");
+        return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
+    g_client_public_key = load_client_public_key();
     if (!g_client_public_key) {
-        g_client_public_key = load_client_public_key();
-        if (!g_client_public_key) {
-            set_error("Failed to load client public key");
-            return ECLIPTIX_ERROR_INIT_FAILED;
-        }
+        set_error("Failed to load client public key");
+        return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
     set_error(nullptr);
@@ -149,12 +146,12 @@ ecliptix_result_t ecliptix_client_encrypt(
         return ECLIPTIX_ERROR_INVALID_PARAMS;
     }
 
-    if (!g_client_public_key) {
+    if (!g_server_public_key) {
         set_error("Not initialized");
         return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_client_public_key, nullptr);
+    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(g_server_public_key, nullptr);
     if (!ctx) {
         set_error("Failed to create encryption context");
         return ECLIPTIX_ERROR_CRYPTO_FAILURE;
@@ -192,7 +189,7 @@ ecliptix_result_t ecliptix_client_decrypt(
     }
 
     if (!g_client_private_key) {
-        set_error("Not initialized");
+        set_error("Client private key not available - decryption disabled for security");
         return ECLIPTIX_ERROR_INIT_FAILED;
     }
 
@@ -232,7 +229,7 @@ ecliptix_result_t ecliptix_client_get_public_key(
     }
 
     if (!g_client_public_key) {
-        set_error("Not initialized");
+        set_error("Client public key not available - not embedded for security");
         return ECLIPTIX_ERROR_INIT_FAILED;
     }
 

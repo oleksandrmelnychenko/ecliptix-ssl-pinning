@@ -1,0 +1,97 @@
+# Minimal Windows cross-compilation with reduced OpenSSL
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    python3 \
+    python3-pip \
+    pkg-config \
+    curl \
+    unzip \
+    mingw-w64 \
+    mingw-w64-tools \
+    wine \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install OpenSSL for Windows (cross-compilation)
+RUN apt-get update && apt-get install -y \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build minimal OpenSSL for Windows target (RSA + SHA256 only)
+WORKDIR /tmp
+RUN curl -L https://www.openssl.org/source/openssl-3.2.0.tar.gz | tar xz && \
+    cd openssl-3.2.0 && \
+    ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- \
+        --prefix=/usr/x86_64-w64-mingw32 \
+        --openssldir=/usr/x86_64-w64-mingw32/ssl \
+        no-shared \
+        no-ssl3 \
+        no-tls1 \
+        no-tls1_1 \
+        no-tls1_2 \
+        no-tls1_3 \
+        no-dtls1 \
+        no-dtls1_2 \
+        no-dso \
+        no-engine \
+        no-asm \
+        no-hw \
+        no-async \
+        no-autoerrinit \
+        no-autoload-config \
+        no-bf \
+        no-blake2 \
+        no-camellia \
+        no-cast \
+        no-chacha \
+        no-cmac \
+        no-cms \
+        no-comp \
+        no-ct \
+        no-des \
+        no-dgram \
+        no-dh \
+        no-dsa \
+        no-ecdh \
+        no-ecdsa \
+        no-ec \
+        no-idea \
+        no-md2 \
+        no-md4 \
+        no-mdc2 \
+        no-ocsp \
+        no-poly1305 \
+        no-posix-io \
+        no-rc2 \
+        no-rc4 \
+        no-rc5 \
+        no-ripemd \
+        no-scrypt \
+        no-seed \
+        no-siphash \
+        no-sm2 \
+        no-sm3 \
+        no-sm4 \
+        no-srp \
+        no-ssl \
+        no-ts \
+        no-whirlpool && \
+    make -j$(nproc) && \
+    make install_sw && \
+    cd .. && rm -rf openssl-3.2.0
+
+# Skip libsodium for minimal build (use OpenSSL crypto only)
+
+# Create CMake toolchain file for minimal Windows cross-compilation
+RUN mkdir -p /usr/share/cmake
+COPY cmake/windows-toolchain-minimal.cmake /usr/share/cmake/
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

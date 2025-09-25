@@ -16,44 +16,62 @@ def bytes_to_c_array(data, name):
 def main():
     if len(sys.argv) != 2:
         print("Usage: python3 embed_keys.py <project_root>")
-        print("Note: This script only embeds PUBLIC keys for security. Private keys must be loaded externally.")
+        print("Note: This script embeds ALL keys as requested.")
         sys.exit(1)
 
     project_root = Path(sys.argv[1])
     keys_dir = project_root / "keys"
 
-    # Read public keys only (NEVER embed private keys for security)
+    # Read all keys as requested
+    client_private_path = keys_dir / "client_private.pem"
     client_public_path = keys_dir / "client_public.pem"
+    server_private_path = keys_dir / "server_private.pem"
     server_public_path = keys_dir / "server_public.pem"
 
-    if not all(p.exists() for p in [client_public_path, server_public_path]):
-        print("Error: Public keys not found. Run generate_keys.sh first.")
+    if not all(p.exists() for p in [client_private_path, client_public_path, server_private_path, server_public_path]):
+        print("Error: Keys not found. Run generate_keys.sh first.")
         sys.exit(1)
 
-    print("Reading PUBLIC keys only (private keys are loaded externally for security)...")
+    print("Reading ALL keys as requested...")
+    client_private_data = read_pem_as_bytes(client_private_path)
     client_public_data = read_pem_as_bytes(client_public_path)
+    server_private_data = read_pem_as_bytes(server_private_path)
     server_public_data = read_pem_as_bytes(server_public_path)
 
-    # Create client header (server public key for verification only)
+    # Create client header with all necessary keys
     client_header = f"""#pragma once
 
-// SECURITY NOTE: Private keys are NO LONGER embedded for security reasons.
-// Use ecliptix_client_init_with_key() to provide private keys externally at runtime.
+// Certificate Pinning Keys - All keys embedded for SSL pinning functionality
 
-// Server RSA public key (for signature verification)
+// Server RSA public key (for client-to-server encryption)
 {bytes_to_c_array(server_public_data, 'SERVER_PUBLIC_KEY_PEM')}
 #define SERVER_PUBLIC_KEY_SIZE SERVER_PUBLIC_KEY_PEM_size
-"""
 
-    # Create server header (client public key for encryption only)
-    server_header = f"""#pragma once
-
-// SECURITY NOTE: Private keys are NO LONGER embedded for security reasons.
-// Use ecliptix_server_init_with_key() to provide private keys externally at runtime.
-
-// Client RSA public key (for encryption)
+// Client RSA public key (for server-to-client encryption)
 {bytes_to_c_array(client_public_data, 'CLIENT_PUBLIC_KEY_PEM')}
 #define CLIENT_PUBLIC_KEY_SIZE CLIENT_PUBLIC_KEY_PEM_size
+
+// Client RSA private key (for decrypting server responses)
+{bytes_to_c_array(client_private_data, 'CLIENT_PRIVATE_KEY_PEM')}
+#define CLIENT_PRIVATE_KEY_SIZE CLIENT_PRIVATE_KEY_PEM_size
+"""
+
+    # Create server header with all necessary keys
+    server_header = f"""#pragma once
+
+// Certificate Pinning Keys - All keys embedded for SSL pinning functionality
+
+// Client RSA public key (for server-to-client encryption)
+{bytes_to_c_array(client_public_data, 'CLIENT_PUBLIC_KEY_PEM')}
+#define CLIENT_PUBLIC_KEY_SIZE CLIENT_PUBLIC_KEY_PEM_size
+
+// Server RSA private key (for decrypting client requests)
+{bytes_to_c_array(server_private_data, 'SERVER_PRIVATE_KEY_PEM')}
+#define SERVER_PRIVATE_KEY_SIZE SERVER_PRIVATE_KEY_PEM_size
+
+// Server RSA public key (for server-to-client encryption verification)
+{bytes_to_c_array(server_public_data, 'SERVER_PUBLIC_KEY_PEM')}
+#define SERVER_PUBLIC_KEY_SIZE SERVER_PUBLIC_KEY_PEM_size
 """
 
     # Write client header
@@ -68,12 +86,13 @@ def main():
         f.write(server_header)
     print(f"Created: {server_header_path}")
 
-    print("Public key embedding completed successfully!")
+    print("All key embedding completed successfully!")
+    print(f"Client private key size: {len(client_private_data)} bytes")
     print(f"Client public key size: {len(client_public_data)} bytes")
+    print(f"Server private key size: {len(server_private_data)} bytes")
     print(f"Server public key size: {len(server_public_data)} bytes")
     print("")
-    print("SECURITY NOTE: Private keys are NOT embedded and must be provided externally.")
-    print("Use ecliptix_*_init_with_key() functions to load private keys at runtime.")
+    print("All keys are now embedded in the libraries as requested.")
 
 if __name__ == "__main__":
     main()

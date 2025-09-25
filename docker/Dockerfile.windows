@@ -21,7 +21,6 @@ RUN apt-get update && apt-get install -y \
 
 # Install OpenSSL for Windows (cross-compilation)
 RUN apt-get update && apt-get install -y \
-    libssl-dev:amd64 \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,14 +36,14 @@ RUN curl -L https://www.openssl.org/source/openssl-3.2.0.tar.gz | tar xz && \
     cd .. && rm -rf openssl-3.2.0
 
 # Build libsodium for Windows target
-RUN curl -L https://github.com/jedisct1/libsodium/releases/download/1.0.19/libsodium-1.0.19.tar.gz | tar xz && \
-    cd libsodium-1.0.19 && \
+RUN curl -L https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz | tar xz && \
+    cd libsodium-1.0.20 && \
     ./configure --host=x86_64-w64-mingw32 \
         --prefix=/usr/x86_64-w64-mingw32 \
         --enable-static --disable-shared && \
     make -j$(nproc) && \
     make install && \
-    cd .. && rm -rf libsodium-1.0.19
+    cd .. && rm -rf libsodium-1.0.20
 
 # Create CMake toolchain file for Windows cross-compilation
 RUN mkdir -p /usr/share/cmake
