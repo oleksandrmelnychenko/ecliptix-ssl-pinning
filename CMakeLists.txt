@@ -287,17 +287,21 @@ if(ECLIPTIX_BUILD_CLIENT)
     # Platform-specific client library naming
     if(WIN32)
         set_target_properties(ecliptix_client PROPERTIES
-            OUTPUT_NAME "ecliptix.client"
+            OUTPUT_NAME "certificate.pinning.client"
+            PREFIX "lib"
             SUFFIX ".dll"
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
         )
     elseif(APPLE)
         set_target_properties(ecliptix_client PROPERTIES
-            OUTPUT_NAME "libecliptix.client"
+            OUTPUT_NAME "certificate.pinning.client"
+            PREFIX "lib"
             SUFFIX ".dylib"
         )
     else()
         set_target_properties(ecliptix_client PROPERTIES
-            OUTPUT_NAME "libecliptix.client"
+            OUTPUT_NAME "certificate.pinning.client"
+            PREFIX "lib"
             SUFFIX ".so"
         )
     endif()
@@ -367,17 +371,21 @@ if(ECLIPTIX_BUILD_SERVER)
     # Platform-specific server library naming
     if(WIN32)
         set_target_properties(ecliptix_server PROPERTIES
-            OUTPUT_NAME "ecliptix.server"
+            OUTPUT_NAME "certificate.pinning.server"
+            PREFIX "lib"
             SUFFIX ".dll"
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
         )
     elseif(APPLE)
         set_target_properties(ecliptix_server PROPERTIES
-            OUTPUT_NAME "libecliptix.server"
+            OUTPUT_NAME "certificate.pinning.server"
+            PREFIX "lib"
             SUFFIX ".dylib"
         )
     else()
         set_target_properties(ecliptix_server PROPERTIES
-            OUTPUT_NAME "libecliptix.server"
+            OUTPUT_NAME "certificate.pinning.server"
+            PREFIX "lib"
             SUFFIX ".so"
         )
     endif()
